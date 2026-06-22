@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5" />
+<title>ShadowMeter — Live Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#070b12; --panel:#0e1521; --panel-2:#121b2b; --line:#1d2942;
+    --ink:#e6edf7; --muted:#8194ad; --faint:#5a6b86;
+    --priv:#34e0cf;      /* off-chain / private / secure  */
+    --zk:#9d7bff;        /* zk proof */
+    --gold:#f5c451;      /* USDC amounts */
+    --ok:#46c585;        /* verified */
+    --chain:#4aa3ff;     /* public chain */
+    --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:'Inter',system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:radial-gradient(1200px 700px at 50% -10%,#0d1626 0%,var(--bg) 60%);
+    color:var(--ink);font-family:var(--sans);
+    display:flex;flex-direction:column;min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+  /* ---------- header ---------- */
+  header{
+    display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+    padding:18px clamp(20px,5vw,56px);border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,rgba(20,30,48,.5),transparent);
+  }
+  .brand{display:flex;align-items:center;gap:12px}
+  .logo{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;
+    background:linear-gradient(135deg,var(--priv),var(--zk));color:#04121a;font-weight:800;font-size:18px}
+  .brand h1{font-size:19px;margin:0;letter-spacing:-.02em;font-weight:800}
+  .brand .sub{font-size:12px;color:var(--muted);margin-top:1px}
+  .mock-tag{font:600 10px/1 var(--mono);letter-spacing:.12em;color:var(--faint);
+    border:1px solid var(--line);border-radius:6px;padding:5px 8px;text-transform:uppercase}
+  .state-pill{margin-left:auto;display:flex;align-items:center;gap:10px;font:600 12px/1 var(--mono);
+    letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+    border:1px solid var(--line);border-radius:999px;padding:9px 14px;background:var(--panel)}
+  .state-pill .dot{width:8px;height:8px;border-radius:50%;background:var(--faint);transition:.3s}
+  .state-pill[data-state="OPEN"] .dot,.state-pill[data-state="METERING"] .dot{background:var(--priv);box-shadow:0 0 10px var(--priv)}
+  .state-pill[data-state="SETTLED"] .dot{background:var(--ok);box-shadow:0 0 10px var(--ok)}
+  .controls{display:flex;gap:10px}
+  button{font-family:var(--sans);font-weight:600;font-size:13px;cursor:pointer;
+    border-radius:9px;padding:10px 16px;border:1px solid var(--line);
+    background:var(--panel-2);color:var(--ink);transition:.15s}
+  button:hover{border-color:var(--priv);color:#fff}
+  button.primary{background:linear-gradient(135deg,var(--priv),#1fb6a8);color:#04121a;border:none}
+  button.primary:hover{filter:brightness(1.08)}
+  button:disabled{opacity:.4;cursor:not-allowed;border-color:var(--line)}
+  /* ---------- layout ---------- */
+  main{flex:1;display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:var(--line);
+    min-height:0}
+  .pane{background:var(--panel);display:flex;flex-direction:column;min-height:0;
+    padding:20px clamp(16px,2vw,24px)}
+  .pane-head{display:flex;align-items:center;gap:11px;padding-bottom:14px;margin-bottom:12px;
+    border-bottom:1px solid var(--line)}
+  .pane-head .ic{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;font-size:15px;
+    border:1px solid var(--line)}
+  .pane-head h2{margin:0;font-size:14px;font-weight:700;letter-spacing:-.01em}
+  .pane-head .tag{margin-left:auto;font:600 9.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;
+    padding:5px 8px;border-radius:6px}
+  .tag.off{color:var(--priv);background:rgba(52,224,207,.1);border:1px solid rgba(52,224,207,.3)}
+  .tag.pub{color:var(--chain);background:rgba(74,163,255,.1);border:1px solid rgba(74,163,255,.3)}
+  .consumer .ic{color:var(--priv)} .provider .ic{color:var(--ok)} .chain .ic{color:var(--chain)}
+  /* counter */
+  .metric{margin-bottom:14px}
+  .metric .k{font:500 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .counter{font:800 46px/1.05 var(--mono);letter-spacing:-.02em;margin-top:6px;
+    font-variant-numeric:tabular-nums}
+  .consumer .counter{color:var(--priv)}
+  .bill{font:800 30px/1 var(--mono);color:var(--gold);font-variant-numeric:tabular-nums;margin-top:6px}
+  .lock{font-size:11px;color:var(--priv);font-weight:600}
+  /* logs */
+  .log{flex:1;overflow:auto;margin-top:6px;display:flex;flex-direction:column;gap:7px;min-height:0;
+    padding-right:4px;scrollbar-width:thin}
+  .row{font:500 12px/1.35 var(--mono);padding:9px 11px;border-radius:8px;background:var(--panel-2);
+    border:1px solid var(--line);opacity:0;transform:translateY(6px);animation:in .28s forwards}
+  .row .m{color:var(--muted)} .row b{font-weight:700}
+  .row.sign{border-left:2px solid var(--priv)} .row.ver{border-left:2px solid var(--ok)}
+  .row .hash{color:var(--faint)}
+  @keyframes in{to{opacity:1;transform:none}}
+  /* chain */
+  .ledger{flex:1;display:flex;flex-direction:column;gap:10px;overflow:auto;min-height:0}
+  .empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
+    text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:12px;padding:24px}
+  .empty .big{font:800 15px/1.3 var(--sans);color:var(--ink)}
+  .empty .small{font-size:12px;max-width:230px}
+  .pulse{width:42px;height:42px;border-radius:50%;border:2px solid var(--chain);position:relative;opacity:.8}
+  .pulse::after{content:"";position:absolute;inset:-2px;border-radius:50%;border:2px solid var(--chain);
+    animation:ring 1.8s ease-out infinite}
+  @keyframes ring{0%{transform:scale(1);opacity:.7}100%{transform:scale(1.9);opacity:0}}
+  .tx{border:1px solid var(--line);border-radius:11px;padding:13px 14px;background:var(--panel-2);
+    opacity:0;transform:translateY(8px);animation:in .4s forwards}
+  .tx.settle{border-color:rgba(74,163,255,.5);box-shadow:0 0 0 1px rgba(74,163,255,.18),0 10px 30px -12px rgba(74,163,255,.5)}
+  .tx .th{display:flex;align-items:center;gap:8px;font:700 11px/1 var(--mono);letter-spacing:.06em;
+    text-transform:uppercase;color:var(--chain);margin-bottom:9px}
+  .tx .ln{display:flex;justify-content:space-between;gap:10px;font:500 12px/1.5 var(--mono);
+    border-top:1px dashed var(--line);padding-top:6px;margin-top:6px}
+  .tx .ln:first-of-type{border-top:none;padding-top:0;margin-top:0}
+  .tx .ln .v{color:var(--ink);font-weight:600}
+  .tx .ln .v.gold{color:var(--gold)} .tx .ln .v.ok{color:var(--ok)}
+  .proofbar{display:flex;align-items:center;gap:9px;font:600 12px/1 var(--mono);color:var(--zk);
+    padding:8px 0}
+  .proofbar .sp{width:13px;height:13px;border-radius:50%;border:2px solid var(--zk);border-top-color:transparent;
+    animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  /* reveal */
+  .reveal{margin:0 clamp(20px,5vw,56px) 16px;border:1px solid var(--line);border-radius:12px;
+    background:var(--panel);overflow:hidden;max-height:0;transition:max-height .5s ease;}
+  .reveal.show{max-height:240px}
+  .reveal .inner{padding:16px clamp(16px,2vw,22px)}
+  .reveal h3{margin:0 0 4px;font-size:13px;display:flex;align-items:center;gap:8px}
+  .reveal .note{font-size:12px;color:var(--muted);margin-bottom:12px}
+  .secrets{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+  .secret{border:1px solid rgba(52,224,207,.3);background:rgba(52,224,207,.06);border-radius:10px;padding:11px 13px}
+  .secret .k{font:600 10px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--priv)}
+  .secret .v{font:800 20px/1.1 var(--mono);margin-top:6px;color:var(--ink);font-variant-numeric:tabular-nums}
+  .secret .x{font-size:10.5px;color:var(--muted);margin-top:4px}
+  /* footer */
+  footer{padding:15px clamp(20px,5vw,56px);border-top:1px solid var(--line);text-align:center;
+    font:600 13px/1.5 var(--sans);color:var(--muted);background:linear-gradient(0deg,rgba(20,30,48,.4),transparent)}
+  footer b{color:var(--priv)} footer .s{color:var(--chain)}
+  @media(max-width:880px){main{grid-template-columns:1fr}.counter{font-size:38px}}
+</style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="logo">◎</div>
+      <div><h1>ShadowMeter</h1><div class="sub">confidential pay-per-use settlement on Stellar</div></div>
+    </div>
+    <span class="mock-tag">mock data · day-1 skeleton</span>
+    <div class="state-pill" id="pill" data-state="IDLE"><span class="dot"></span><span id="stateText">idle</span></div>
+    <div class="controls">
+      <button class="primary" id="run">▶ Run demo</button>
+      <button id="reveal" disabled>🔑 Reveal with view key</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- CONSUMER -->
+    <section class="pane consumer">
+      <div class="pane-head"><span class="ic">▲</span><h2>Consumer agent</h2><span class="tag off">off-chain</span></div>
+      <div class="metric"><div class="k">API calls consumed</div><div class="counter" id="calls">0</div></div>
+      <div class="k" style="font:500 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">cumulative vouchers signed</div>
+      <div class="log" id="consumerLog"></div>
+    </section>
+
+    <!-- PROVIDER -->
+    <section class="pane provider">
+      <div class="pane-head"><span class="ic">◆</span><h2>Provider agent</h2><span class="tag off">off-chain</span></div>
+      <div class="metric"><div class="k">Running bill <span class="lock">🔒 private</span></div><div class="bill" id="bill">$0.00</div></div>
+      <div class="k" style="font:500 11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">vouchers verified · gatekept ≤ escrow</div>
+      <div class="log" id="providerLog"></div>
+    </section>
+
+    <!-- CHAIN -->
+    <section class="pane chain">
+      <div class="pane-head"><span class="ic">⬢</span><h2>Stellar testnet</h2><span class="tag pub">public</span></div>
+      <div class="ledger" id="ledger">
+        <div class="empty" id="emptyState">
+          <div class="pulse"></div>
+          <div class="big">Ledger idle</div>
+          <div class="small">Press <b>Run demo</b> to open a channel.</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="reveal" id="revealPanel">
+    <div class="inner">
+      <h3>🔑 Revealed locally via view key</h3>
+      <div class="note">These values were used to compute the settlement — but <b>never touched the chain</b>. The ledger only ever saw <span style="color:var(--gold);font-weight:700">$14.862</span>.</div>
+      <div class="secrets">
+        <div class="secret"><div class="k">Total calls</div><div class="v" id="sCalls">7,431</div><div class="x">hidden in the ZK witness</div></div>
+        <div class="secret"><div class="k">Per-call rate</div><div class="v">$0.002</div><div class="x">committed, never disclosed</div></div>
+        <div class="secret"><div class="k">On-chain settlement</div><div class="v" style="color:var(--gold)">$14.862</div><div class="x">the only number revealed</div></div>
+      </div>
+    </div>
+  </div>
+
+  <footer>Thousands of agent-to-agent transactions · <span class="s">one on-chain settlement</span> · <b>zero usage leaked</b></footer>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const fmtN = (n) => Math.round(n).toLocaleString("en-US");
+  const usd = (n) => "$" + n.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:3});
+  const hex = (n) => "0x" + Array.from({length:n},()=>Math.floor(Math.random()*16).toString(16)).join("");
+  const sleep = (ms) => new Promise(r=>setTimeout(r,ms));
+
+  // worked-example constants (match the agent + circuit)
+  const RATE = 0.002, ESCROW = 20, TOTAL = 7431, SETTLE = +(TOTAL*RATE).toFixed(3), REFUND = +(ESCROW-SETTLE).toFixed(3);
+  const CHECKPOINTS = [1000, 2500, 5000, 7431];
+
+  const pill=$("pill"), stateText=$("stateText"), runBtn=$("run"), revealBtn=$("reveal");
+  const callsEl=$("calls"), billEl=$("bill"), cLog=$("consumerLog"), pLog=$("providerLog");
+  const ledger=$("ledger"), revealPanel=$("revealPanel");
+  let running=false;
+
+  function setState(s,label){ pill.dataset.state=s; stateText.textContent=label; }
+  function row(parent,cls,html){ const d=document.createElement("div"); d.className="row "+cls; d.innerHTML=html;
+    parent.appendChild(d); parent.scrollTop=parent.scrollHeight; return d; }
+
+  function reset(){
+    cLog.innerHTML=""; pLog.innerHTML=""; callsEl.textContent="0"; billEl.textContent="$0.00";
+    revealPanel.classList.remove("show"); revealBtn.disabled=true;
+    ledger.innerHTML='<div class="empty" id="emptyState"><div class="pulse"></div><div class="big">Ledger idle</div><div class="small">Channel not yet open.</div></div>';
+    setState("IDLE","idle");
+  }
+
+  function chainEmptyMetering(){
+    ledger.innerHTML =
+      '<div class="tx"><div class="th">⬢ tx · open_channel</div>'+
+      '<div class="ln"><span class="m">escrow locked</span><span class="v gold">'+usd(ESCROW)+'</span></div>'+
+      '<div class="ln"><span class="m">rate_commitment</span><span class="v hash">'+hex(8)+'…</span></div></div>'+
+      '<div class="empty"><div class="pulse"></div><div class="big">0 settlements</div>'+
+      '<div class="small">7,431 calls are metering <b>off-chain</b> — the ledger stays still. No per-call transactions.</div></div>';
+  }
+
+  function animateCounter(dur){
+    return new Promise(resolve=>{
+      const t0=performance.now();
+      let nextCp=0;
+      (function frame(now){
+        const p=Math.min(1,(now-t0)/dur), e=1-Math.pow(1-p,3); // easeOutCubic
+        const calls=Math.floor(e*TOTAL);
+        callsEl.textContent=fmtN(calls);
+        billEl.textContent=usd(+(calls*RATE).toFixed(3));
+        while(nextCp<CHECKPOINTS.length && calls>=CHECKPOINTS[nextCp]){
+          const cum=CHECKPOINTS[nextCp], bill=+(cum*RATE).toFixed(3);
+          row(cLog,"sign",'<b>voucher #'+(nextCp+1)+'</b> <span class="m">· cumulative</span> '+fmtN(cum)+' <span class="hash">· sig '+hex(6)+'…</span>');
+          row(pLog,"ver",'✓ <span class="m">verified · cum</span> '+fmtN(cum)+' <span class="m">· bill</span> <b>'+usd(bill)+'</b> 🔒');
+          nextCp++;
+        }
+        if(p<1) requestAnimationFrame(frame);
+        else { callsEl.textContent=fmtN(TOTAL); billEl.textContent=usd(SETTLE); resolve(); }
+      })(t0);
+    });
+  }
+
+  async function run(){
+    if(running) return; running=true; runBtn.disabled=true; reset();
+    // OPEN
+    setState("OPEN","open · escrow locked");
+    row(cLog,"sign",'<span class="m">channel opened · escrow</span> <b>'+usd(ESCROW)+'</b>');
+    row(pLog,"ver",'<span class="m">rate committed · gatekeeping ≤</span> <b>'+usd(ESCROW)+'</b>');
+    chainEmptyMetering();
+    await sleep(700);
+    // METER
+    setState("METERING","metering off-chain");
+    await animateCounter(3600);
+    await sleep(450);
+    // SETTLE — proof then one tx
+    setState("METERING","closing · proving");
+    const proof=document.createElement("div"); proof.className="proofbar";
+    proof.innerHTML='<span class="sp"></span> generating Groth16 proof…'; ledger.appendChild(proof);
+    await sleep(1500);
+    proof.innerHTML='<span style="color:var(--ok)">✓</span> proof verified on-chain';
+    const tx=document.createElement("div"); tx.className="tx settle";
+    tx.innerHTML='<div class="th">⬢ tx · close_channel · ✓ proof valid</div>'+
+      '<div class="ln"><span class="m">settle → provider</span><span class="v gold">'+usd(SETTLE)+'</span></div>'+
+      '<div class="ln"><span class="m">refund → consumer</span><span class="v ok">'+usd(REFUND)+'</span></div>'+
+      '<div class="ln"><span class="m">nullifier</span><span class="v hash">'+hex(8)+'…</span></div>';
+    ledger.appendChild(tx); ledger.scrollTop=ledger.scrollHeight;
+    setState("SETTLED","settled");
+    revealBtn.disabled=false; runBtn.disabled=false; running=false;
+  }
+
+  runBtn.addEventListener("click",run);
+  revealBtn.addEventListener("click",()=>revealPanel.classList.toggle("show"));
+  // auto-run once for the preview
+  setTimeout(run,600);
+})();
+</script>
+</body>
+</html>
