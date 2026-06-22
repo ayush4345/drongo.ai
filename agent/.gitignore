@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.tooling/
+*.log
+.DS_Store
+# generated prover inputs
+input.json
