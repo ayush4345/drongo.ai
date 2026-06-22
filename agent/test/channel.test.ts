@@ -106,8 +106,9 @@ test("circuit input exposes all 14 expected signals as decimal strings", async (
   const input = toCircuitInput(channel.close());
 
   const expected = [
-    "channelId", "rateCommitment", "escrow", "settlementAmount", "nullifier",
-    "Ax", "Ay", "rate", "rateBlind", "totalUnits", "channelSecret", "R8x", "R8y", "S",
+    "channel_id", "rate_commitment", "escrow_amount", "settlement_amount", "nullifier",
+    "consumer_pubkey_x", "consumer_pubkey_y", "rate", "rate_blind", "total_units",
+    "channel_secret", "sig_R8x", "sig_R8y", "sig_S",
   ];
   assert.deepEqual(Object.keys(input).sort(), [...expected].sort());
   for (const v of Object.values(input)) {

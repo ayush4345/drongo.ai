@@ -58,14 +58,17 @@ open ──▶ meter (off-chain, instant, private) ──▶ settle (on-chain, o
 
 ## Interface with the ZK team (the seam)
 
-`toCircuitInput(witness)` produces the flat `input.json` signal map. The signal names live
-in [`src/circuit.ts`](./src/circuit.ts) — the **single place** to keep in lockstep with the
-circuit:
+`toCircuitInput(witness)` produces the flat `input.json` signal map, matching the
+`MeteredVerifier` circuit in `jny0444/metered-stellar` (`setttlement.circom`) exactly. The
+signal names live in [`src/circuit.ts`](./src/circuit.ts) — the **single place** to keep in
+lockstep with the circuit:
 
-- **Public:** `channelId, rateCommitment, escrow, settlementAmount, nullifier, Ax, Ay`
-- **Private:** `rate, rateBlind, totalUnits, channelSecret, R8x, R8y, S`
+- **Public:** `channel_id, rate_commitment, escrow_amount, settlement_amount, nullifier, consumer_pubkey_x, consumer_pubkey_y`
+- **Private:** `rate, rate_blind, total_units, channel_secret, sig_R8x, sig_R8y, sig_S`
 
-The voucher message the circuit must recompute is `Poseidon(channelId, totalUnits)`.
+The voucher message the circuit recomputes is `Poseidon(channel_id, total_units)`.
+`writeCircuitInput()` is a drop-in replacement for the circuit repo's hardcoded
+`generate_input.js`, but populated from a real metering session.
 
 ## API sketch
 
