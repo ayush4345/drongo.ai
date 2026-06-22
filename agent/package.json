@@ -16,6 +16,9 @@
   "dependencies": {
     "circomlibjs": "^0.1.7"
   },
+  "pnpm": {
+    "onlyBuiltDependencies": ["blake-hash"]
+  },
   "devDependencies": {
     "@types/node": "^20.14.0",
     "tsx": "^4.16.0",
