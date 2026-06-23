@@ -11,6 +11,20 @@ export { ConsumerAgent } from "./consumer.js";
 export { ProviderAgent, type ServeResult, type RejectReason } from "./provider.js";
 export { MeteredChannel, type OpenChannelOpts, type MeterStep } from "./channel.js";
 export { toCircuitInput, writeCircuitInput } from "./circuit.js";
+export {
+  type Service,
+  MockInferenceService,
+  type InferenceRequest,
+  type InferenceResult,
+} from "./service.js";
+export {
+  ServiceChannel,
+  ServiceConsumer,
+  ServiceProvider,
+  type PaidRequest,
+  type ServeResponse,
+  type CallOutcome,
+} from "./service-channel.js";
 export type {
   BabyJubPublicKey,
   EdDSASignature,
