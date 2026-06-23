@@ -55,17 +55,18 @@ Requires **Node.js ≥ 20**.
 
 ```bash
 cd agent
-npm install          # installs circomlibjs (crypto) + tsx + typescript
+pnpm install          # or: npm install  (pnpm builds the native blake-hash addon automatically)
 
-npm run demo         # worked example: bursts 7,431 metered calls,
-                     # closes with ONE 14.862 USDC settlement, prints the
-                     # public-vs-private split and the circuit input.json
+pnpm run demo         # metering example: 7,431 calls → ONE 14.862 USDC settlement,
+                      # prints the public-vs-private split and the circuit input.json
+pnpm run demo:service # service loop: consumer calls the provider's API and pays per call
 
-npm test             # unit tests: signature round-trip, tamper + wrong-key
-                     # rejection, escrow halting, monotonicity, settlement math
-
-npm run typecheck    # tsc --noEmit
+pnpm test             # unit tests: signatures, tamper/wrong-key rejection, escrow halting,
+                      # monotonicity, settlement math, and the request→serve→pay loop
+pnpm run typecheck    # tsc --noEmit
 ```
+
+> On pnpm, if EdDSA throws a native-binding error, run `pnpm rebuild blake-hash` once.
 
 Expected `npm run demo` (abridged):
 

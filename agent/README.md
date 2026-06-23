@@ -22,12 +22,20 @@ ruinously expensive to verify inside a SNARK. This choice is what keeps the circ
 
 ## Install & run
 
+`npm` and `pnpm` both work. pnpm builds the native `blake-hash` addon automatically
+(allow-listed via `pnpm.onlyBuiltDependencies`); npm runs build scripts by default.
+
 ```bash
-npm install
-npm run demo       # worked example: 7,431 calls → one 14.862 USDC settlement
-npm test           # unit tests (node:test)
-npm run typecheck  # tsc --noEmit
+pnpm install          # or: npm install
+
+pnpm run demo         # metering example: 7,431 calls → one 14.862 USDC settlement
+pnpm run demo:service # SERVICE loop: consumer calls the provider API + pays per call
+pnpm test             # unit tests (node:test) — metering + service loop
+pnpm run typecheck    # tsc --noEmit
 ```
+
+> If you're on pnpm and skipped the build prompt, run `pnpm rebuild blake-hash` once —
+> `circomlibjs`'s EdDSA needs that native addon.
 
 ## The model
 
@@ -46,6 +54,37 @@ open ──▶ meter (off-chain, instant, private) ──▶ settle (on-chain, o
    private witness for the circuit. The prover turns it into a Groth16 proof; the Soroban
    contract verifies it, pays the provider `settlementAmount`, refunds the remainder, and
    spends the nullifier.
+
+## Service loop (request → serve → pay)
+
+On top of raw metering, `ServiceChannel` models the real agentic-commerce round-trip: one
+agent **uses another agent's service and pays per call**.
+
+- **`Service<Req,Res>`** — a pluggable metered service (`name` / `price` / `handle`),
+  priced in the same units the channel meters. `MockInferenceService` is a deterministic
+  example.
+- **`ServiceConsumer`** pays: signs a cumulative voucher covering the call's price.
+- **`ServiceProvider`** prices the request **independently** (never trusts the consumer's
+  claim), validates the voucher through the channel's gatekeeping, and serves the result
+  **only if paid and within escrow**. Refusals (`underpaid`, `bad-signature`,
+  `ceiling-exceeded`) return no result. Pay-first: the provider never does unpaid work.
+
+```ts
+import { ShadowCrypto, createIdentity, randomFieldValue, ServiceChannel, MockInferenceService } from "@shadowmeter/agent";
+
+const crypto = await ShadowCrypto.build();
+const channel = new ServiceChannel(crypto, {
+  channelId: randomFieldValue(), rate: 2_000n, escrow: 20_000_000n,
+  rateBlind: randomFieldValue(), channelSecret: randomFieldValue(),
+  identity: createIdentity(crypto),
+}, new MockInferenceService(1n));
+
+const out = channel.call({ prompt: "hello agent" }); // → { served, result, cost, billable }
+const witness = channel.close();                      // → feed to the prover as input.json
+```
+
+The `PaidRequest { request, cost, voucher }` shape is exactly what crosses the wire in the
+planned **x402 `402` handshake** — so this loop drops straight into the x402 transport.
 
 ## What's public vs. private
 
@@ -100,10 +139,13 @@ src/
   voucher.ts    voucher message, sign, verify
   consumer.ts   ConsumerAgent — issues cumulative vouchers
   provider.ts   ProviderAgent — verifies + gatekeeps against escrow, halts on breach
-  channel.ts    MeteredChannel — open/meter/close + settlement witness
-  circuit.ts    witness → snarkjs input.json (the locked seam with T1)
-  demo.ts       the worked example
-test/           node:test unit tests
+  channel.ts          MeteredChannel — open/meter/close + settlement witness
+  circuit.ts          witness → snarkjs input.json (the locked seam with T1)
+  service.ts          Service<Req,Res> interface + MockInferenceService
+  service-channel.ts  ServiceConsumer / ServiceProvider / ServiceChannel (request→serve→pay)
+  demo.ts             the metering worked example
+  service-demo.ts     the service-loop demo (npm run demo:service)
+test/                 node:test unit tests (metering + service loop)
 ```
 
 ## Scope
