@@ -9,6 +9,7 @@
   },
   "scripts": {
     "demo": "tsx src/demo.ts",
+    "demo:service": "tsx src/service-demo.ts",
     "test": "node --import tsx --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc"
