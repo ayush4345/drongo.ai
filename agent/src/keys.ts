@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import type { ShadowCrypto } from "./crypto.js";
+import type { DrongoCrypto } from "./crypto.js";
 import type { BabyJubPublicKey } from "./types.js";
 
 /** A consumer's signing identity: a BabyJubjub private key and its derived public key. */
@@ -12,7 +12,7 @@ export interface ConsumerIdentity {
  * Create a consumer identity. Pass a fixed 32-byte `seed` for deterministic tests;
  * omit it for a fresh random key.
  */
-export function createIdentity(crypto: ShadowCrypto, seed?: Buffer): ConsumerIdentity {
+export function createIdentity(crypto: DrongoCrypto, seed?: Buffer): ConsumerIdentity {
   const privateKey = seed ?? randomBytes(32);
   return { privateKey, publicKey: crypto.publicKey(privateKey) };
 }

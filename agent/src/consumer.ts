@@ -1,4 +1,4 @@
-import type { ShadowCrypto } from "./crypto.js";
+import type { DrongoCrypto } from "./crypto.js";
 import { signVoucher } from "./voucher.js";
 import type { ConsumerIdentity } from "./keys.js";
 import type { BabyJubPublicKey, Voucher } from "./types.js";
@@ -13,7 +13,7 @@ export class ConsumerAgent {
   private cumulative = 0n;
 
   constructor(
-    private readonly crypto: ShadowCrypto,
+    private readonly crypto: DrongoCrypto,
     private readonly identity: ConsumerIdentity,
     private readonly channelId: bigint,
   ) {}

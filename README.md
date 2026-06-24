@@ -1,4 +1,4 @@
-# ShadowMeter
+# Drongo AI
 
 **Confidential pay-per-use settlement between autonomous agents — metered off-chain, settled once on Stellar with a zero-knowledge proof.**
 
@@ -12,7 +12,7 @@ Thousands of agent-to-agent transactions collapse into **one** on-chain settleme
 
 As agents start buying services from each other (inference, data, compute, tool calls), the natural pricing model is **metered, pay-per-use**. Done naively on-chain that leaks badly — every micropayment exposes who pays whom, how much, and how often (a competitive-intelligence firehose), and posting thousands of tiny payments is wasteful.
 
-ShadowMeter runs the meter **off-chain** (instant, free, private) and settles **once** on Stellar with a ZK proof asserting:
+Drongo AI runs the meter **off-chain** (instant, free, private) and settles **once** on Stellar with a ZK proof asserting:
 
 > *"The amount I'm collecting is correctly derived from a meter both parties signed off on, at the rate we agreed"* — without revealing the individual calls, the total count, or the rate.
 

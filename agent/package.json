@@ -1,7 +1,7 @@
 {
-  "name": "@shadowmeter/agent",
+  "name": "@drongo/agent",
   "version": "0.1.0",
-  "description": "ShadowMeter agent harness — consumer/provider agents, EdDSA-BabyJubjub voucher metering, and ZK witness export for confidential pay-per-use settlement on Stellar.",
+  "description": "Drongo AI agent harness — consumer/provider agents, EdDSA-BabyJubjub voucher metering, and ZK witness export for confidential pay-per-use settlement on Stellar.",
   "type": "module",
   "license": "MIT",
   "engines": {
