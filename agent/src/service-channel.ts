@@ -1,4 +1,4 @@
-import type { ShadowCrypto } from "./crypto.js";
+import type { DrongoCrypto } from "./crypto.js";
 import { MeteredChannel, type OpenChannelOpts } from "./channel.js";
 import type { ConsumerAgent } from "./consumer.js";
 import type { ProviderAgent, RejectReason } from "./provider.js";
@@ -65,7 +65,7 @@ export class ServiceProvider<Req, Res> {
     private readonly service: Service<Req, Res>,
   ) {}
 
-  serve(paid: PaidRequest<Req>): ServeResponse<Res> {
+  async serve(paid: PaidRequest<Req>): Promise<ServeResponse<Res>> {
     const cost = this.service.price(paid.request);
 
     // The voucher must advance the meter by at least the provider's price for this call.
@@ -84,7 +84,7 @@ export class ServiceProvider<Req, Res> {
     // Paid and valid → do the work.
     return {
       served: true,
-      result: this.service.handle(paid.request),
+      result: await this.service.handle(paid.request),
       cost,
       cumulativeUnits: res.cumulativeUnits,
       billable: res.billable,
@@ -102,7 +102,7 @@ export class ServiceChannel<Req, Res> {
   readonly consumer: ServiceConsumer<Req, Res>;
   readonly provider: ServiceProvider<Req, Res>;
 
-  constructor(crypto: ShadowCrypto, opts: OpenChannelOpts, service: Service<Req, Res>) {
+  constructor(crypto: DrongoCrypto, opts: OpenChannelOpts, service: Service<Req, Res>) {
     this.channel = new MeteredChannel(crypto, opts);
     this.consumer = new ServiceConsumer(this.channel.consumer, service);
     this.provider = new ServiceProvider(this.channel.provider, service);
@@ -117,9 +117,9 @@ export class ServiceChannel<Req, Res> {
   }
 
   /** One full round-trip: consumer pays, provider verifies + serves (or refuses). */
-  call(req: Req): CallOutcome<Req, Res> {
+  async call(req: Req): Promise<CallOutcome<Req, Res>> {
     const paid = this.consumer.request(req);
-    const resp = this.provider.serve(paid);
+    const resp = await this.provider.serve(paid);
     return { ...resp, request: req, voucher: paid.voucher };
   }
 

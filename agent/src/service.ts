@@ -12,8 +12,9 @@ export interface Service<Req, Res> {
   /** Price of a request, in units. The PROVIDER prices independently — it never trusts a
    *  consumer-claimed cost. Must be > 0. */
   price(req: Req): bigint;
-  /** Perform the work and return a result. Only ever called after payment is verified. */
-  handle(req: Req): Res;
+  /** Perform the work and return a result. Only ever called after payment is verified.
+   *  Async so real services (HTTP APIs, LLMs) can be plugged in. */
+  handle(req: Req): Promise<Res>;
 }
 
 export interface InferenceRequest {
@@ -42,7 +43,7 @@ export class MockInferenceService implements Service<InferenceRequest, Inference
     return this.unitsPerCall;
   }
 
-  handle(req: InferenceRequest): InferenceResult {
+  async handle(req: InferenceRequest): Promise<InferenceResult> {
     const completion = `echo(${req.prompt.length}): ${req.prompt.split("").reverse().join("")}`;
     return { model: this.name, completion, units: this.unitsPerCall };
   }

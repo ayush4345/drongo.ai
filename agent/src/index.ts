@@ -1,10 +1,10 @@
 /**
- * @shadowmeter/agent — public API.
+ * @drongo/agent — public API.
  *
  * Confidential pay-per-use metering between autonomous agents: cumulative
  * EdDSA-BabyJubjub vouchers signed off-chain, settled once on Stellar with a ZK proof.
  */
-export { ShadowCrypto } from "./crypto.js";
+export { DrongoCrypto } from "./crypto.js";
 export { createIdentity, randomFieldValue, type ConsumerIdentity } from "./keys.js";
 export { voucherMessage, signVoucher, verifyVoucher } from "./voucher.js";
 export { ConsumerAgent } from "./consumer.js";
@@ -25,6 +25,21 @@ export {
   type ServeResponse,
   type CallOutcome,
 } from "./service-channel.js";
+export {
+  WeatherService,
+  FetchHttpClient,
+  wmoText,
+  type HttpClient,
+  type WeatherRequest,
+  type WeatherResult,
+} from "./weather.js";
+export { StubLlmClient, type LlmClient, type LlmDecision } from "./llm.js";
+export { OpenAiLlmClient } from "./openai-client.js";
+export {
+  WeatherConsumerAgent,
+  type LookupRecord,
+  type ConsumerRunResult,
+} from "./weather-consumer.js";
 export type {
   BabyJubPublicKey,
   EdDSASignature,

@@ -1,5 +1,5 @@
 /**
- * ShadowMeter service-loop demo — two agents, request → serve → pay.
+ * Drongo AI service-loop demo — two agents, request → serve → pay.
  *
  * Run with:  npm run demo:service
  *
@@ -7,7 +7,7 @@
  * against a valid in-escrow payment voucher. Thousands of calls meter off-chain; one ZK
  * settlement closes the channel.
  */
-import { ShadowCrypto } from "./crypto.js";
+import { DrongoCrypto } from "./crypto.js";
 import { createIdentity, randomFieldValue } from "./keys.js";
 import { ServiceChannel } from "./service-channel.js";
 import { MockInferenceService, type InferenceRequest, type InferenceResult } from "./service.js";
@@ -16,7 +16,7 @@ const USDC = 1_000_000n;
 const usd = (atomic: bigint) => `${(Number(atomic) / 1e6).toFixed(6)} USDC`;
 
 async function main(): Promise<void> {
-  const crypto = await ShadowCrypto.build();
+  const crypto = await DrongoCrypto.build();
   const service = new MockInferenceService(1n); // 1 unit / call
 
   const channel = new ServiceChannel<InferenceRequest, InferenceResult>(
@@ -37,7 +37,7 @@ async function main(): Promise<void> {
   // A few visible calls: request → serve → pay.
   const prompts = ["hello agent", "translate this", "summarize the doc", "what is zk?"];
   for (const prompt of prompts) {
-    const out = channel.call({ prompt });
+    const out = await channel.call({ prompt });
     if (out.served) {
       console.log(`▸ call "${prompt}"`);
       console.log(`    served  → "${out.result!.completion}"`);
@@ -50,7 +50,7 @@ async function main(): Promise<void> {
   // Burst the rest off-chain to reach the canonical 7,431 calls.
   let served = 4;
   while (served < 7431) {
-    const out = channel.call({ prompt: `req#${served}` });
+    const out = await channel.call({ prompt: `req#${served}` });
     if (!out.served) break;
     served++;
   }
