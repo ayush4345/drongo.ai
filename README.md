@@ -1,4 +1,4 @@
-# ShadowMeter
+# Drongo AI
 
 **Confidential pay-per-use settlement between autonomous agents — metered off-chain, settled once on Stellar with a zero-knowledge proof.**
 
@@ -12,7 +12,7 @@ Thousands of agent-to-agent transactions collapse into **one** on-chain settleme
 
 As agents start buying services from each other (inference, data, compute, tool calls), the natural pricing model is **metered, pay-per-use**. Done naively on-chain that leaks badly — every micropayment exposes who pays whom, how much, and how often (a competitive-intelligence firehose), and posting thousands of tiny payments is wasteful.
 
-ShadowMeter runs the meter **off-chain** (instant, free, private) and settles **once** on Stellar with a ZK proof asserting:
+Drongo AI runs the meter **off-chain** (instant, free, private) and settles **once** on Stellar with a ZK proof asserting:
 
 > *"The amount I'm collecting is correctly derived from a meter both parties signed off on, at the rate we agreed"* — without revealing the individual calls, the total count, or the rate.
 
@@ -55,18 +55,19 @@ Requires **Node.js ≥ 20**.
 
 ```bash
 cd agent
-pnpm install          # or: npm install  (pnpm builds the native blake-hash addon automatically)
+pnpm install         # or npm install — circomlibjs (crypto) + openai + tsx + typescript
 
-pnpm run demo         # metering example: 7,431 calls → ONE 14.862 USDC settlement,
-                      # prints the public-vs-private split and the circuit input.json
-pnpm run demo:service # service loop: consumer calls the provider's API and pays per call
-
-pnpm test             # unit tests: signatures, tamper/wrong-key rejection, escrow halting,
-                      # monotonicity, settlement math, and the request→serve→pay loop
-pnpm run typecheck    # tsc --noEmit
+pnpm run demo        # metering: 7,431 calls → ONE 14.862 USDC settlement
+pnpm run demo:weather # headline: an LLM consumer buys real weather from the provider,
+                      # pays per call, settles once. Set OPENAI_API_KEY for the real path;
+                      # without a key it runs offline (stub LLM + canned weather).
+pnpm test            # unit tests (offline: stub LLM + mock HTTP + crypto)
+pnpm run typecheck   # tsc --noEmit
 ```
 
-> On pnpm, if EdDSA throws a native-binding error, run `pnpm rebuild blake-hash` once.
+**Meaningful agents:** the **provider** sells a real metered **weather API** (keyless
+Open-Meteo); the **consumer** is an **OpenAI agent** that decides which cities to look up
+and pays per call through the private voucher channel.
 
 Expected `npm run demo` (abridged):
 
