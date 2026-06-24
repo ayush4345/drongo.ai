@@ -2,7 +2,7 @@ import { buildEddsa, buildPoseidon } from "circomlibjs";
 import type { BabyJubPublicKey, EdDSASignature } from "./types.js";
 
 /**
- * ShadowCrypto wraps circomlibjs (Poseidon + EdDSA-BabyJubjub) behind a clean
+ * DrongoCrypto wraps circomlibjs (Poseidon + EdDSA-BabyJubjub) behind a clean
  * bigint-only API. Using circomlibjs — rather than a generic Ed25519 library — is
  * deliberate: it produces signatures and hashes that the Circom circuit's
  * `EdDSAPoseidonVerifier` / `Poseidon` templates verify natively. Same constants,
@@ -10,16 +10,16 @@ import type { BabyJubPublicKey, EdDSASignature } from "./types.js";
  *
  * All field elements are kept internal; callers only ever see bigint / strings.
  */
-export class ShadowCrypto {
+export class DrongoCrypto {
   private constructor(
     private readonly eddsa: any,
     private readonly poseidonFn: any,
   ) {}
 
   /** Build the WASM-backed primitives. Call once and reuse (it is not cheap). */
-  static async build(): Promise<ShadowCrypto> {
+  static async build(): Promise<DrongoCrypto> {
     const [eddsa, poseidonFn] = await Promise.all([buildEddsa(), buildPoseidon()]);
-    return new ShadowCrypto(eddsa, poseidonFn);
+    return new DrongoCrypto(eddsa, poseidonFn);
   }
 
   /** Poseidon hash of field-element inputs, returned as a canonical bigint. */

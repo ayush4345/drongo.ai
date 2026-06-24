@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ShadowCrypto } from "../src/crypto.js";
+import { DrongoCrypto } from "../src/crypto.js";
 import { createIdentity } from "../src/keys.js";
 import { MeteredChannel, type OpenChannelOpts } from "../src/channel.js";
 import { signVoucher } from "../src/voucher.js";
@@ -8,7 +8,7 @@ import { toCircuitInput } from "../src/circuit.js";
 
 const USDC = 1_000_000n;
 
-function openChannel(crypto: ShadowCrypto, overrides: Partial<OpenChannelOpts> = {}) {
+function openChannel(crypto: DrongoCrypto, overrides: Partial<OpenChannelOpts> = {}) {
   const identity = createIdentity(crypto, Buffer.alloc(32, 7));
   return new MeteredChannel(crypto, {
     channelId: 1234n,
@@ -22,7 +22,7 @@ function openChannel(crypto: ShadowCrypto, overrides: Partial<OpenChannelOpts> =
 }
 
 test("worked example: 7431 calls settle to 14.862 USDC with 5.138 refunded", async () => {
-  const crypto = await ShadowCrypto.build();
+  const crypto = await DrongoCrypto.build();
   const channel = openChannel(crypto);
 
   let prev = 0n;
@@ -41,7 +41,7 @@ test("worked example: 7431 calls settle to 14.862 USDC with 5.138 refunded", asy
 });
 
 test("provider halts when a voucher would exceed the escrow ceiling", async () => {
-  const crypto = await ShadowCrypto.build();
+  const crypto = await DrongoCrypto.build();
   const channel = openChannel(crypto); // ceiling = 20 USDC / 0.002 = 10_000 calls
 
   const atCeiling = channel.meter(10_000n);
@@ -60,7 +60,7 @@ test("provider halts when a voucher would exceed the escrow ceiling", async () =
 });
 
 test("provider rejects a non-monotonic (rolled-back) voucher", async () => {
-  const crypto = await ShadowCrypto.build();
+  const crypto = await DrongoCrypto.build();
   const channel = openChannel(crypto);
   const identity = createIdentity(crypto, Buffer.alloc(32, 7)); // same seed as openChannel
 
@@ -74,7 +74,7 @@ test("provider rejects a non-monotonic (rolled-back) voucher", async () => {
 });
 
 test("provider rejects a voucher signed by the wrong key", async () => {
-  const crypto = await ShadowCrypto.build();
+  const crypto = await DrongoCrypto.build();
   const channel = openChannel(crypto);
   const mallory = createIdentity(crypto, Buffer.alloc(32, 99));
 
@@ -85,7 +85,7 @@ test("provider rejects a voucher signed by the wrong key", async () => {
 });
 
 test("rate commitment hides the rate and is deterministic; blinding changes it", async () => {
-  const crypto = await ShadowCrypto.build();
+  const crypto = await DrongoCrypto.build();
   const a = openChannel(crypto, { rate: 2_000n, rateBlind: 999n });
   const b = openChannel(crypto, { rate: 2_000n, rateBlind: 999n });
   const c = openChannel(crypto, { rate: 2_000n, rateBlind: 1_000n });
@@ -94,13 +94,13 @@ test("rate commitment hides the rate and is deterministic; blinding changes it",
 });
 
 test("closing a channel with no accepted vouchers throws", async () => {
-  const crypto = await ShadowCrypto.build();
+  const crypto = await DrongoCrypto.build();
   const channel = openChannel(crypto);
   assert.throws(() => channel.close(), /nothing to settle/);
 });
 
 test("circuit input exposes all 14 expected signals as decimal strings", async () => {
-  const crypto = await ShadowCrypto.build();
+  const crypto = await DrongoCrypto.build();
   const channel = openChannel(crypto);
   channel.meter(7_431n);
   const input = toCircuitInput(channel.close());

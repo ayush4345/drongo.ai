@@ -1,4 +1,4 @@
-import type { ShadowCrypto } from "./crypto.js";
+import type { DrongoCrypto } from "./crypto.js";
 import { ConsumerAgent } from "./consumer.js";
 import { ProviderAgent, type ServeResult } from "./provider.js";
 import type { ConsumerIdentity } from "./keys.js";
@@ -24,7 +24,7 @@ export interface MeterStep {
 
 /**
  * MeteredChannel ties a {@link ConsumerAgent} and {@link ProviderAgent} together and
- * models the open → meter → settle lifecycle described in the ShadowMeter spec.
+ * models the open → meter → settle lifecycle described in the Drongo AI spec.
  *
  * The on-chain Soroban contract only ever sees: the escrow (at open), the rate
  * commitment (at open), and the settlement witness (at close). Everything in between
@@ -36,7 +36,7 @@ export class MeteredChannel {
   readonly terms: ChannelTerms;
   private readonly consumerPub: BabyJubPublicKey;
 
-  constructor(private readonly crypto: ShadowCrypto, opts: OpenChannelOpts) {
+  constructor(private readonly crypto: DrongoCrypto, opts: OpenChannelOpts) {
     this.terms = {
       channelId: opts.channelId,
       rate: opts.rate,

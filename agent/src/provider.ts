@@ -1,4 +1,4 @@
-import type { ShadowCrypto } from "./crypto.js";
+import type { DrongoCrypto } from "./crypto.js";
 import { verifyVoucher } from "./voucher.js";
 import type { BabyJubPublicKey, Voucher } from "./types.js";
 
@@ -34,7 +34,7 @@ export class ProviderAgent {
   private halted = false;
 
   constructor(
-    private readonly crypto: ShadowCrypto,
+    private readonly crypto: DrongoCrypto,
     private readonly channelId: bigint,
     private readonly consumerPub: BabyJubPublicKey,
     private readonly rate: bigint,

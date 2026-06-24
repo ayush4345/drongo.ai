@@ -1,4 +1,4 @@
-import type { ShadowCrypto } from "./crypto.js";
+import type { DrongoCrypto } from "./crypto.js";
 import type { BabyJubPublicKey, Voucher } from "./types.js";
 
 /**
@@ -9,7 +9,7 @@ import type { BabyJubPublicKey, Voucher } from "./types.js";
  * their order here, the circuit must change in lockstep.
  */
 export function voucherMessage(
-  crypto: ShadowCrypto,
+  crypto: DrongoCrypto,
   channelId: bigint,
   cumulativeUnits: bigint,
 ): bigint {
@@ -18,7 +18,7 @@ export function voucherMessage(
 
 /** Produce a signed cumulative voucher for the given running total. */
 export function signVoucher(
-  crypto: ShadowCrypto,
+  crypto: DrongoCrypto,
   privateKey: Buffer,
   channelId: bigint,
   cumulativeUnits: bigint,
@@ -29,7 +29,7 @@ export function signVoucher(
 
 /** Verify a voucher's signature against the consumer's public key. */
 export function verifyVoucher(
-  crypto: ShadowCrypto,
+  crypto: DrongoCrypto,
   voucher: Voucher,
   pub: BabyJubPublicKey,
 ): boolean {

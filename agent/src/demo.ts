@@ -1,5 +1,5 @@
 /**
- * ShadowMeter agent demo — the worked example from the concept doc.
+ * Drongo AI agent demo — the worked example from the concept doc.
  *
  * Run with:  npm run demo
  *
@@ -7,7 +7,7 @@
  * vouchers), then closes with a single settlement — printing what stays private vs. what
  * hits the chain, and the circuit input.json the ZK prover consumes.
  */
-import { ShadowCrypto } from "./crypto.js";
+import { DrongoCrypto } from "./crypto.js";
 import { createIdentity, randomFieldValue } from "./keys.js";
 import { MeteredChannel } from "./channel.js";
 import { toCircuitInput } from "./circuit.js";
@@ -17,7 +17,7 @@ const usd = (atomic: bigint) => `${(Number(atomic) / 1e6).toFixed(6)} USDC`;
 const short = (s: string) => `${s.slice(0, 18)}…${s.slice(-6)}`;
 
 async function main(): Promise<void> {
-  const crypto = await ShadowCrypto.build();
+  const crypto = await DrongoCrypto.build();
   const identity = createIdentity(crypto);
 
   const rate = 2_000n; //               0.002 USDC / call  (PRIVATE)

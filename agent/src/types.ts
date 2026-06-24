@@ -1,5 +1,5 @@
 /**
- * Core types for the ShadowMeter agent harness.
+ * Core types for the Drongo AI agent harness.
  *
  * All quantities are integers (bigint) so they map cleanly onto field elements
  * in the BN254 scalar field used by the settlement circuit. Asset amounts are
