@@ -79,10 +79,14 @@
   @keyframes nodepulse{0%,100%{opacity:.4}50%{opacity:1}}
   .const .pulse{animation:nodepulse 3.2s ease-in-out infinite}
   .const .pkt{filter:drop-shadow(0 0 5px rgba(52,230,192,.9))}
+  /* scroll-triggered reveal (added via JS so it degrades gracefully) */
+  .r{opacity:0;transform:translateY(22px);transition:opacity .65s cubic-bezier(.2,.7,.2,1),transform .65s cubic-bezier(.2,.7,.2,1)}
+  .r.in{opacity:1;transform:none}
   @media(prefers-reduced-motion:reduce){
     .hero .inner>*{opacity:1;animation:none}
     .hero .glow,.const .flow,.const .pulse{animation:none}
     .const .pkt{display:none}
+    .r{opacity:1;transform:none;transition:none}
   }
   .logos{position:relative;border-top:1px solid var(--ink-line);padding:24px 0}
   .logos .row{display:flex;align-items:center;gap:clamp(18px,4vw,46px);flex-wrap:wrap}
@@ -298,6 +302,33 @@
   <div>Thousands of transactions · one settlement · zero usage leaked</div>
   <a href="https://github.com/ayush4345/drongo.ai" target="_blank" rel="noopener noreferrer">github.com/ayush4345/drongo.ai</a>
 </div></footer>
+
+<script>
+  (function () {
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce || !('IntersectionObserver' in window)) return; // degrade: content stays visible
+
+    var headers = document.querySelectorAll('section .label, section h2, section .lead, .ctaband .cta');
+    var items = document.querySelectorAll('.pcard, .step, .fcard, .stat, .gs, .spon');
+
+    // stagger grid items by their position within their row
+    items.forEach(function (el) {
+      var i = Array.prototype.indexOf.call(el.parentNode.children, el);
+      el.style.transitionDelay = Math.min(i, 7) * 70 + 'ms';
+    });
+
+    var targets = [].concat([].slice.call(headers), [].slice.call(items));
+    targets.forEach(function (el) { el.classList.add('r'); });
+
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+
+    targets.forEach(function (el) { io.observe(el); });
+  })();
+</script>
 
 </body>
 </html>
