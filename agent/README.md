@@ -46,6 +46,7 @@ pnpm install            # circomlibjs + openai + tsx + typescript
 pnpm run demo           # metering: 7,431 calls → one 14.862 USDC settlement
 pnpm run demo:service   # service loop (mock inference) — request → serve → pay
 pnpm run demo:weather   # the headline demo: LLM consumer buys real weather, pays per call
+                        # set PROVIDER_URL=http://localhost:4021 for x402 HTTP (start provider first)
 
 pnpm test               # unit tests (offline: stub LLM + mock HTTP + crypto)
 pnpm run typecheck      # tsc --noEmit
@@ -93,9 +94,13 @@ src/
   service.ts           Service<Req,Res> interface (async) + MockInferenceService
   service-channel.ts   ServiceConsumer / ServiceProvider / ServiceChannel (request→serve→pay)
   weather.ts           WeatherService (Open-Meteo) + injectable HttpClient
+  weather-channel.ts   openWeatherChannel / closeWeatherChannel (in-process or x402)
   llm.ts               LlmClient interface + deterministic StubLlmClient
   openai-client.ts     OpenAiLlmClient — function-calling brain for the consumer
   weather-consumer.ts  WeatherConsumerAgent — LLM decides lookups, pays per call
+  x402-client.ts         manual x402 retry (PAYMENT-SIGNATURE on 402)
+  x402-service-channel.ts  remote ServiceChannel over HTTP + Drongo vouchers
+  voucher-wire.ts        JSON serde for EdDSA vouchers on the wire
   demo.ts / service-demo.ts / weather-demo.ts   runnable demos
 test/                  node:test unit tests (offline: stub LLM + mock HTTP)
 ```
@@ -103,6 +108,6 @@ test/                  node:test unit tests (offline: stub LLM + mock HTTP)
 ## Scope
 
 MVP: unidirectional channel, cooperative close, single final voucher, committed rate,
-settlement amount revealed at close, per-channel nullifier. Stretch: shielded settlement
-amount, bidirectional channels, dispute/timeout fraud proofs, x402 transport between the
-two agents (the natural home for `PaidRequest`).
+settlement amount revealed at close, per-channel nullifier, **x402 HTTP transport** for
+remote metered calls (set `PROVIDER_URL` — see `X402ServiceChannel`). Stretch:
+shielded settlement amount, bidirectional channels, dispute/timeout fraud proofs.

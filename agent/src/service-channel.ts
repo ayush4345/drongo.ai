@@ -1,6 +1,7 @@
 import type { DrongoCrypto } from "./crypto.js";
 import { MeteredChannel, type OpenChannelOpts } from "./channel.js";
 import type { ConsumerAgent } from "./consumer.js";
+import type { CallOutcome as MeteredCallOutcome, MeteredServiceChannel } from "./metered-service.js";
 import type { ProviderAgent, RejectReason } from "./provider.js";
 import type { Service } from "./service.js";
 import type { ChannelTerms, SettlementWitness, Voucher } from "./types.js";
@@ -26,10 +27,7 @@ export interface ServeResponse<Res> {
   billable?: bigint;
 }
 
-export interface CallOutcome<Req, Res> extends ServeResponse<Res> {
-  request: Req;
-  voucher: Voucher;
-}
+export interface CallOutcome<Req, Res> extends ServeResponse<Res>, MeteredCallOutcome<Req, Res> {}
 
 /**
  * Consumer side of the service loop: turns a request into a *paid request* by signing a
@@ -97,7 +95,7 @@ export class ServiceProvider<Req, Res> {
  * {@link MeteredChannel}, exposing the full request → pay → serve round-trip plus the
  * settlement close. The metering, gatekeeping, and ZK witness export are reused unchanged.
  */
-export class ServiceChannel<Req, Res> {
+export class ServiceChannel<Req, Res> implements MeteredServiceChannel<Req, Res> {
   readonly channel: MeteredChannel;
   readonly consumer: ServiceConsumer<Req, Res>;
   readonly provider: ServiceProvider<Req, Res>;

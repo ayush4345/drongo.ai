@@ -4,7 +4,8 @@
   "type": "module",
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "agent"
   ],
   "scripts": {
     "build": "pnpm -r build",
@@ -15,7 +16,8 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "esbuild"
+      "esbuild",
+      "blake-hash"
     ]
   },
   "packageManager": "pnpm@11.1.1"

@@ -8,20 +8,19 @@
  *   • REAL  (OPENAI_API_KEY set): an OpenAI agent decides which cities to look up and
  *     Open-Meteo serves real current weather.
  *   • OFFLINE (no key): a deterministic stub LLM + canned weather, so it always runs.
+ *
+ * Set PROVIDER_URL (e.g. http://localhost:4021) for x402 HTTP transport (start provider first).
  */
 import { DrongoCrypto } from "./crypto.js";
-import { createIdentity, randomFieldValue } from "./keys.js";
-import { ServiceChannel } from "./service-channel.js";
 import {
   WeatherService,
   FetchHttpClient,
   type HttpClient,
-  type WeatherRequest,
-  type WeatherResult,
 } from "./weather.js";
 import { StubLlmClient, type LlmClient } from "./llm.js";
 import { OpenAiLlmClient } from "./openai-client.js";
 import { WeatherConsumerAgent } from "./weather-consumer.js";
+import { closeWeatherChannel, openWeatherChannel } from "./weather-channel.js";
 
 const USDC = 1_000_000n;
 const usd = (a: bigint) => `${(Number(a) / 1e6).toFixed(6)} USDC`;
@@ -53,18 +52,7 @@ async function main(): Promise<void> {
   const llm: LlmClient = real ? new OpenAiLlmClient() : new StubLlmClient();
   const service = new WeatherService(http, 1n); // 1 unit / weather call
 
-  const channel = new ServiceChannel<WeatherRequest, WeatherResult>(
-    crypto,
-    {
-      channelId: randomFieldValue(),
-      rate: 2_000n, //          0.002 USDC / call (PRIVATE)
-      escrow: 20n * USDC, //    20 USDC ceiling (public)
-      rateBlind: randomFieldValue(),
-      channelSecret: randomFieldValue(),
-      identity: createIdentity(crypto),
-    },
-    service,
-  );
+  const channel = await openWeatherChannel(crypto, service);
 
   const goal =
     process.argv.slice(2).join(" ") ||
@@ -86,7 +74,7 @@ async function main(): Promise<void> {
     );
   }
 
-  const w = channel.close();
+  const w = await closeWeatherChannel(channel);
   const settle = BigInt(w.settlementAmount);
   console.log("\n── one on-chain settlement ──");
   console.log(`  calls served (PRIVATE): ${w.totalUnits}`);

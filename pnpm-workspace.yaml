@@ -1,7 +1,9 @@
 packages:
   - apps/*
   - packages/*
+  - agent
 allowBuilds:
+  blake-hash: true
   esbuild: true
 catalog:
   "@types/node": ^22.20.0

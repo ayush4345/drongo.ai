@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "description": "Drongo AI agent harness — consumer/provider agents, EdDSA-BabyJubjub voucher metering, and ZK witness export for confidential pay-per-use settlement on Stellar.",
   "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "license": "MIT",
   "engines": {
     "node": ">=20"
