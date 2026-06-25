@@ -1,0 +1,24 @@
+{
+  "name": "slate",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "agent"
+  ],
+  "scripts": {
+    "build": "pnpm -r build",
+    "check-types": "pnpm -r check-types",
+    "test": "pnpm -r test",
+    "dev:provider": "pnpm --filter @slate/provider dev",
+    "run:scenario": "pnpm --filter @slate/consumer start -- --calls 7431"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "blake-hash"
+    ]
+  },
+  "packageManager": "pnpm@11.1.1"
+}

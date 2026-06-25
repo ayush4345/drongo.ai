@@ -1,0 +1,14 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/protocol"
+    },
+    {
+      "path": "./apps/provider"
+    },
+    {
+      "path": "./apps/consumer"
+    }
+  ]
+}

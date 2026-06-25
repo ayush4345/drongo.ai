@@ -1,0 +1,7 @@
+node_modules/
+dist/
+coverage/
+.env
+artifacts/*
+!artifacts/.gitkeep
+apps/provider/artifacts/

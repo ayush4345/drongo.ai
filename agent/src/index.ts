@@ -7,6 +7,22 @@
 export { DrongoCrypto } from "./crypto.js";
 export { createIdentity, randomFieldValue, type ConsumerIdentity } from "./keys.js";
 export { voucherMessage, signVoucher, verifyVoucher } from "./voucher.js";
+export { buildSettlementWitness } from "./channel.js";
+export type { MeteredServiceChannel } from "./metered-service.js";
+export {
+  serializeVoucher,
+  deserializeVoucher,
+  isWireVoucher,
+  type WireVoucher,
+} from "./voucher-wire.js";
+export { fetchWithManualX402, type FetchLike } from "./x402-client.js";
+export {
+  X402ServiceChannel,
+  openX402ChannelFromUsd,
+  parseWirePublicKey,
+  type X402ServiceChannelOpts,
+} from "./x402-service-channel.js";
+export { parseUsdToMicros, formatMicros } from "./money.js";
 export { ConsumerAgent } from "./consumer.js";
 export { ProviderAgent, type ServeResult, type RejectReason } from "./provider.js";
 export { MeteredChannel, type OpenChannelOpts, type MeterStep } from "./channel.js";

@@ -65,6 +65,23 @@ pnpm test            # unit tests (offline: stub LLM + mock HTTP + crypto)
 pnpm run typecheck   # tsc --noEmit
 ```
 
+### x402 — weather demo over HTTP
+
+From the **repo root** (Node **≥ 22.13** for pnpm 11):
+
+```bash
+pnpm install
+pnpm dev:provider          # terminal 1 — x402 + Open-Meteo weather on :4021
+PROVIDER_URL=http://localhost:4021 pnpm --filter @drongo/agent demo:weather  # terminal 2
+```
+
+The provider accepts **Drongo EdDSA-BabyJubjub vouchers** on `/channels/:id/call` (ZK-ready).
+Legacy dev vouchers (`run:scenario`) still work for the simple metering loop.
+
+```bash
+pnpm --filter @slate/consumer start -- --provider http://localhost:4021 --calls 5
+```
+
 **Meaningful agents:** the **provider** sells a real metered **weather API** (keyless
 Open-Meteo); the **consumer** is an **OpenAI agent** that decides which cities to look up
 and pays per call through the private voucher channel.

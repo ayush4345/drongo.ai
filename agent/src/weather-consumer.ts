@@ -1,5 +1,5 @@
 import type { LlmClient } from "./llm.js";
-import type { ServiceChannel } from "./service-channel.js";
+import type { MeteredServiceChannel } from "./metered-service.js";
 import type { WeatherRequest, WeatherResult } from "./weather.js";
 
 export interface LookupRecord {
@@ -24,7 +24,7 @@ export interface ConsumerRunResult {
  */
 export class WeatherConsumerAgent {
   constructor(
-    private readonly channel: ServiceChannel<WeatherRequest, WeatherResult>,
+    private readonly channel: MeteredServiceChannel<WeatherRequest, WeatherResult>,
     private readonly llm: LlmClient,
     private readonly maxRounds = 4,
   ) {}

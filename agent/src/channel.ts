@@ -72,30 +72,52 @@ export class MeteredChannel {
   close(): SettlementWitness {
     const finalVoucher = this.provider.latestVoucher;
     if (!finalVoucher) throw new Error("no accepted vouchers — nothing to settle");
-
-    const totalUnits = finalVoucher.cumulativeUnits;
-    const settlementAmount = totalUnits * this.terms.rate;
-    if (settlementAmount > this.terms.escrow) {
-      throw new Error("settlement exceeds escrow — invariant violated");
-    }
-
-    const s = (x: bigint) => x.toString();
-    return {
-      channelId: s(this.terms.channelId),
-      rateCommitment: s(this.rateCommitment()),
-      escrow: s(this.terms.escrow),
-      settlementAmount: s(settlementAmount),
-      nullifier: s(this.nullifier()),
-      consumerPubKey: { Ax: s(this.consumerPub.Ax), Ay: s(this.consumerPub.Ay) },
-      rate: s(this.terms.rate),
-      rateBlind: s(this.terms.rateBlind),
-      totalUnits: s(totalUnits),
-      channelSecret: s(this.terms.channelSecret),
-      signature: {
-        R8x: s(finalVoucher.signature.R8x),
-        R8y: s(finalVoucher.signature.R8y),
-        S: s(finalVoucher.signature.S),
-      },
-    };
+    return buildSettlementWitness(
+      this.crypto,
+      this.terms,
+      this.consumerPub,
+      finalVoucher,
+      this.rateCommitment(),
+      this.nullifier(),
+    );
   }
+}
+
+export function buildSettlementWitness(
+  crypto: DrongoCrypto,
+  terms: ChannelTerms,
+  consumerPub: BabyJubPublicKey,
+  finalVoucher: Voucher,
+  rateCommitmentValue?: bigint,
+  nullifierValue?: bigint,
+): SettlementWitness {
+  const totalUnits = finalVoucher.cumulativeUnits;
+  const settlementAmount = totalUnits * terms.rate;
+  if (settlementAmount > terms.escrow) {
+    throw new Error("settlement exceeds escrow — invariant violated");
+  }
+
+  const commitment =
+    rateCommitmentValue ?? crypto.poseidon([terms.rate, terms.rateBlind]);
+  const nullifier =
+    nullifierValue ?? crypto.poseidon([terms.channelId, terms.channelSecret]);
+
+  const s = (x: bigint) => x.toString();
+  return {
+    channelId: s(terms.channelId),
+    rateCommitment: s(commitment),
+    escrow: s(terms.escrow),
+    settlementAmount: s(settlementAmount),
+    nullifier: s(nullifier),
+    consumerPubKey: { Ax: s(consumerPub.Ax), Ay: s(consumerPub.Ay) },
+    rate: s(terms.rate),
+    rateBlind: s(terms.rateBlind),
+    totalUnits: s(totalUnits),
+    channelSecret: s(terms.channelSecret),
+    signature: {
+      R8x: s(finalVoucher.signature.R8x),
+      R8y: s(finalVoucher.signature.R8y),
+      S: s(finalVoucher.signature.S),
+    },
+  };
 }
