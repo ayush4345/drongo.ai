@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 const REPO = "https://github.com/ayush4345/drongo.ai";
 
 export default function Nav() {
@@ -15,6 +17,9 @@ export default function Nav() {
           <a href="#tech">Tech</a>
           <a href="#sponsors">Sponsors</a>
         </div>
+        <Link className="btn primary" href="/dashboard">
+          Dashboard
+        </Link>
         <a
           className="btn ghost-d"
           href={REPO}
