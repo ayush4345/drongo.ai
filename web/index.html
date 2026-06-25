@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Drongo AI — Confidential pay-per-use settlement for AI agents</title>
+<meta name="description" content="Drongo meters thousands of agent-to-agent API calls off-chain and settles them once on Stellar with a zero-knowledge proof — so usage, pricing, and timing never leak." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#06080d; --bg2:#080b12; --panel:#0e131d; --panel2:#121a27; --line:#1c2433;
+    --ink:#eaf0f8; --muted:#8a99b0; --faint:#5e6d85;
+    --cyan:#36e0d0; --violet:#9b7cff; --gold:#f5c451; --chain:#4aa3ff; --ok:#46c585;
+    --grad:linear-gradient(110deg,var(--cyan),var(--violet));
+    --disp:'Space Grotesk',system-ui,sans-serif; --sans:'Inter',system-ui,sans-serif;
+    --mono:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:1140px;margin:0 auto;padding:0 clamp(20px,5vw,40px)}
+  .grad{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .eyebrow{font:700 12px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--cyan)}
+
+  /* nav */
+  nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(12px);background:rgba(6,8,13,.72);border-bottom:1px solid var(--line)}
+  nav .row{display:flex;align-items:center;gap:24px;height:64px}
+  .brand{display:flex;align-items:center;gap:11px;font-family:var(--disp);font-weight:700;font-size:18px;letter-spacing:-.01em}
+  .logo{width:30px;height:30px;border-radius:9px;background:var(--grad);display:grid;place-items:center;color:#04121a;font-weight:700}
+  nav .links{display:flex;gap:26px;margin-left:auto;font-size:14px;color:var(--muted)}
+  nav .links a:hover{color:var(--ink)}
+  .btn{font-family:var(--sans);font-weight:600;font-size:14px;border-radius:10px;padding:10px 16px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);cursor:pointer;transition:.15s;display:inline-block}
+  .btn:hover{border-color:var(--cyan);color:#fff}
+  .btn.primary{background:var(--grad);color:#04121a;border:none;font-weight:700}
+  .btn.primary:hover{filter:brightness(1.08)}
+  @media(max-width:760px){nav .links{display:none}}
+
+  /* hero */
+  .hero{position:relative;padding:clamp(64px,11vw,128px) 0 72px;overflow:hidden}
+  .hero::before{content:"";position:absolute;inset:0;background:radial-gradient(720px 380px at 78% -8%,rgba(155,124,255,.20),transparent 60%),radial-gradient(620px 360px at 8% 12%,rgba(54,224,208,.14),transparent 55%);pointer-events:none}
+  .hero .badge{display:inline-flex;align-items:center;gap:9px;font:600 12px/1 var(--mono);color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:8px 13px;background:var(--panel)}
+  .hero .badge b{color:var(--cyan)}
+  h1{font-family:var(--disp);font-weight:700;font-size:clamp(38px,6.6vw,76px);line-height:1.02;letter-spacing:-.03em;margin:22px 0 0;max-width:15ch}
+  .hero p.sub{font-size:clamp(16px,2vw,20px);color:var(--muted);max-width:60ch;margin:22px 0 0}
+  .hero .cta{display:flex;gap:13px;flex-wrap:wrap;margin-top:34px}
+  .punch{margin-top:40px;font:600 13px/1.6 var(--mono);color:var(--faint)}
+  .punch b{color:var(--cyan)} .punch .s{color:var(--chain)}
+
+  /* flow strip */
+  .flow{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:16px;overflow:hidden;margin-top:54px}
+  .flow .cell{background:var(--panel);padding:18px 16px}
+  .flow .k{font:700 10px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+  .flow .t{font-family:var(--disp);font-weight:600;font-size:17px;margin-top:9px}
+  .flow .d{font-size:12.5px;color:var(--muted);margin-top:5px}
+  .flow .tag{font:700 9px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;margin-top:11px;display:inline-block;padding:5px 7px;border-radius:5px}
+  .tag.off{color:var(--cyan);background:rgba(54,224,208,.1)} .tag.pub{color:var(--chain);background:rgba(74,163,255,.12)}
+  @media(max-width:760px){.flow{grid-template-columns:1fr 1fr}}
+
+  section{padding:clamp(60px,9vw,104px) 0;position:relative}
+  .sec-h{max-width:62ch}
+  h2{font-family:var(--disp);font-weight:700;font-size:clamp(28px,4.4vw,46px);line-height:1.08;letter-spacing:-.02em;margin:14px 0 0}
+  .lead{color:var(--muted);font-size:clamp(15px,1.7vw,18px);margin-top:16px}
+
+  /* problem */
+  .three{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:46px}
+  .prob{border:1px solid var(--line);border-radius:16px;background:var(--panel);padding:26px 24px}
+  .prob .n{font:700 12px/1 var(--mono);color:var(--violet)}
+  .prob h3{font-family:var(--disp);font-weight:600;font-size:20px;margin:14px 0 8px}
+  .prob p{color:var(--muted);font-size:14.5px;margin:0}
+  @media(max-width:860px){.three{grid-template-columns:1fr}}
+
+  /* features */
+  .feat{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:46px}
+  .card{border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,var(--panel),var(--bg2));padding:26px 24px;transition:.18s}
+  .card:hover{border-color:rgba(54,224,208,.4);transform:translateY(-3px)}
+  .card .ic{width:42px;height:42px;border-radius:11px;display:grid;place-items:center;font-size:20px;border:1px solid var(--line);background:var(--panel2);margin-bottom:16px}
+  .card h3{font-family:var(--disp);font-weight:600;font-size:18px;margin:0 0 8px}
+  .card p{color:var(--muted);font-size:14px;margin:0}
+  @media(max-width:860px){.feat{grid-template-columns:1fr}}
+
+  /* public vs private */
+  .ppwrap{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:42px}
+  .pp{border:1px solid var(--line);border-radius:16px;background:var(--panel);overflow:hidden}
+  .pp .hd{padding:16px 22px;font:700 12px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;border-bottom:1px solid var(--line)}
+  .pp.pub .hd{color:var(--chain)} .pp.priv .hd{color:var(--cyan)}
+  .pp ul{margin:0;padding:14px 22px 22px 38px;color:var(--muted);font-size:14.5px}
+  .pp li{margin:8px 0}
+  @media(max-width:860px){.ppwrap{grid-template-columns:1fr}}
+
+  /* tech */
+  .chips{display:flex;flex-wrap:wrap;gap:12px;margin-top:40px}
+  .chip{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:13px 16px}
+  .chip .dot{width:9px;height:9px;border-radius:50%;background:var(--grad)}
+  .chip .nm{font-family:var(--disp);font-weight:600;font-size:15px}
+  .chip .ro{font:500 11px/1 var(--mono);color:var(--faint);margin-left:2px}
+
+  /* sponsors */
+  .sponsors{margin-top:38px;display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+  .sp{background:var(--panel);padding:26px 16px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;text-align:center;min-height:104px}
+  .sp .nm{font-family:var(--disp);font-weight:700;font-size:16px}
+  .sp .ro{font:600 10px/1.3 var(--mono);letter-spacing:.04em;text-transform:uppercase;color:var(--faint)}
+  @media(max-width:860px){.sponsors{grid-template-columns:1fr 1fr}}
+
+  /* cta */
+  .ctaband{border:1px solid var(--line);border-radius:22px;background:linear-gradient(120deg,rgba(54,224,208,.08),rgba(155,124,255,.10));padding:clamp(34px,6vw,64px);text-align:center;position:relative;overflow:hidden}
+  .ctaband h2{margin:0 auto}
+  .ctaband .cta{display:flex;gap:13px;justify-content:center;flex-wrap:wrap;margin-top:28px}
+
+  footer{border-top:1px solid var(--line);padding:40px 0;color:var(--faint);font-size:13px}
+  footer .row{display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;align-items:center}
+  footer a{color:var(--muted)} footer a:hover{color:var(--ink)}
+</style>
+</head>
+<body>
+
+<nav><div class="wrap row">
+  <a class="brand" href="#top"><span class="logo">◐</span> Drongo<span style="color:var(--muted);font-weight:500"> AI</span></a>
+  <div class="links">
+    <a href="#problem">Problem</a>
+    <a href="#how">How it works</a>
+    <a href="#features">Features</a>
+    <a href="#tech">Tech</a>
+    <a href="#sponsors">Sponsors</a>
+  </div>
+  <a class="btn primary" href="https://github.com/ayush4345/drongo.ai" target="_blank" rel="noopener noreferrer">View on GitHub</a>
+</div></nav>
+
+<header class="hero" id="top"><div class="wrap">
+  <span class="badge">Built for <b>Stellar Hacks: Real-World ZK</b> · ZK is load-bearing</span>
+  <h1>Agents pay agents. <span class="grad">Privately.</span></h1>
+  <p class="sub">Drongo is the confidential settlement layer for the agent economy. Thousands of agent-to-agent API calls are metered <b style="color:var(--ink)">off-chain</b>, then settled <b style="color:var(--ink)">once</b> on Stellar with a zero-knowledge proof — so usage volume, pricing, and timing never leak.</p>
+  <div class="cta">
+    <a class="btn primary" href="#how">See how it works</a>
+    <a class="btn" href="https://github.com/ayush4345/drongo.ai" target="_blank" rel="noopener noreferrer">Read the code</a>
+  </div>
+
+  <div class="flow">
+    <div class="cell"><div class="k">01 · Discover</div><div class="t">Find &amp; quote</div><div class="d">Consumer hits the provider, gets terms over x402.</div><span class="tag off">off-chain</span></div>
+    <div class="cell"><div class="k">02 · Open</div><div class="t">Escrow once</div><div class="d">USDC locked on Stellar; the rate is committed, not revealed.</div><span class="tag pub">on-chain</span></div>
+    <div class="cell"><div class="k">03 · Meter</div><div class="t">Pay per call</div><div class="d">Signed cumulative vouchers. The chain stays silent.</div><span class="tag off">off-chain</span></div>
+    <div class="cell"><div class="k">04 · Settle</div><div class="t">One ZK proof</div><div class="d">Groth16 on Soroban pays out — zero usage leaked.</div><span class="tag pub">on-chain</span></div>
+  </div>
+
+  <p class="punch">Thousands of agent-to-agent transactions · <span class="s">one on-chain settlement</span> · <b>zero usage leaked</b></p>
+</div></header>
+
+<section id="problem"><div class="wrap">
+  <div class="sec-h">
+    <span class="eyebrow">The problem</span>
+    <h2>Metered machine commerce leaks everything.</h2>
+    <p class="lead">As agents start buying inference, data, and compute from each other, pay-per-use is the natural model. Done naively on-chain, it's a metadata firehose.</p>
+  </div>
+  <div class="three">
+    <div class="prob"><div class="n">01</div><h3>Usage is competitive intel</h3><p>Every micropayment on-chain reconstructs the full usage graph — who pays whom, how much, how often.</p></div>
+    <div class="prob"><div class="n">02</div><h3>Pricing is secret</h3><p>Providers give different rates to different customers. Per-call amounts on-chain expose the entire rate card.</p></div>
+    <div class="prob"><div class="n">03</div><h3>Per-call settlement is wasteful</h3><p>Posting thousands of micro-transactions is slow and expensive. You want to meter freely and settle once.</p></div>
+  </div>
+</div></section>
+
+<section id="how" style="background:linear-gradient(180deg,var(--bg),var(--bg2))"><div class="wrap">
+  <div class="sec-h">
+    <span class="eyebrow">How it works</span>
+    <h2>Meter off-chain. Settle once. Prove it.</h2>
+    <p class="lead">Drongo runs the meter as a payment channel: the consumer signs cumulative EdDSA-BabyJubjub vouchers as it consumes, and a single Groth16 proof settles the channel on Stellar — asserting the payout is correctly derived from a counter-signed meter at the agreed rate, without revealing the calls, the count, or the rate.</p>
+  </div>
+  <div class="ppwrap" style="margin-top:44px">
+    <div class="pp pub"><div class="hd">Public on-chain</div><ul>
+      <li>Channel open / close</li><li>Escrow amount</li><li>Settlement amount</li><li>Nullifier &amp; rate commitment</li>
+    </ul></div>
+    <div class="pp priv"><div class="hd">Private — never revealed</div><ul>
+      <li>Number of calls / units</li><li>The per-unit rate</li><li>Per-call timing &amp; frequency</li><li>Which services were used</li>
+    </ul></div>
+  </div>
+</div></section>
+
+<section id="features"><div class="wrap">
+  <div class="sec-h">
+    <span class="eyebrow">Features</span>
+    <h2>A private toll-gate for autonomous agents.</h2>
+  </div>
+  <div class="feat">
+    <div class="card"><div class="ic">🛡️</div><h3>Confidential metering</h3><p>Usage volume, rate, and timing stay off-chain. The ledger only ever sees one settlement.</p></div>
+    <div class="card"><div class="ic">⚡</div><h3>Thousands of calls, one tx</h3><p>Meter freely off-chain; settle the whole channel in a single Stellar transaction.</p></div>
+    <div class="card"><div class="ic">🔏</div><h3>ZK-proven correctness</h3><p>A Groth16 proof verified inside a Soroban contract guarantees the payout matches the signed meter.</p></div>
+    <div class="card"><div class="ic">🎟️</div><h3>Escrow &amp; gatekeeping</h3><p>A prepaid USDC ceiling caps spend; the provider serves only against fresh in-budget vouchers, and halts otherwise.</p></div>
+    <div class="card"><div class="ic">🚪</div><h3>x402-native front door</h3><p>Discovery and channel-open ride Stellar's x402 — interoperable with the agentic-commerce ecosystem.</p></div>
+    <div class="card"><div class="ic">🤖</div><h3>Real agents, real work</h3><p>An OpenAI consumer agent buys live weather from a metered provider — paying per call, privately.</p></div>
+  </div>
+</div></section>
+
+<section id="tech" style="background:linear-gradient(180deg,var(--bg2),var(--bg))"><div class="wrap">
+  <div class="sec-h">
+    <span class="eyebrow">Tech used</span>
+    <h2>Built on a real ZK + Stellar stack.</h2>
+  </div>
+  <div class="chips">
+    <div class="chip"><span class="dot"></span><span class="nm">Stellar / Soroban</span><span class="ro">smart contracts</span></div>
+    <div class="chip"><span class="dot"></span><span class="nm">Circom + snarkjs</span><span class="ro">Groth16 ZK</span></div>
+    <div class="chip"><span class="dot"></span><span class="nm">circomlibjs</span><span class="ro">EdDSA-BabyJubjub · Poseidon</span></div>
+    <div class="chip"><span class="dot"></span><span class="nm">x402</span><span class="ro">agent payments</span></div>
+    <div class="chip"><span class="dot"></span><span class="nm">USDC</span><span class="ro">SEP-41</span></div>
+    <div class="chip"><span class="dot"></span><span class="nm">TypeScript · Node</span><span class="ro">agent harness</span></div>
+    <div class="chip"><span class="dot"></span><span class="nm">OpenAI</span><span class="ro">consumer agent</span></div>
+    <div class="chip"><span class="dot"></span><span class="nm">Open-Meteo</span><span class="ro">provider service</span></div>
+  </div>
+</div></section>
+
+<section id="sponsors"><div class="wrap">
+  <div class="sec-h">
+    <span class="eyebrow">Sponsors &amp; ecosystem</span>
+    <h2>Powered by the people building agentic money.</h2>
+  </div>
+  <div class="sponsors">
+    <div class="sp"><span class="nm">Stellar</span><span class="ro">L1 · Soroban</span></div>
+    <div class="sp"><span class="nm">Coinbase</span><span class="ro">x402 protocol</span></div>
+    <div class="sp"><span class="nm">OpenZeppelin</span><span class="ro">x402 facilitator</span></div>
+    <div class="sp"><span class="nm">Circle</span><span class="ro">USDC</span></div>
+    <div class="sp"><span class="nm">DoraHacks</span><span class="ro">hackathon</span></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="ctaband">
+    <span class="eyebrow">Drongo AI</span>
+    <h2 style="max-width:18ch">The confidential settlement layer that x402 metering lacks.</h2>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/ayush4345/drongo.ai" target="_blank" rel="noopener noreferrer">Explore the repo</a>
+      <a class="btn" href="#top">Back to top</a>
+    </div>
+  </div>
+</div></section>
+
+<footer><div class="wrap row">
+  <div class="brand" style="font-size:16px"><span class="logo" style="width:26px;height:26px;font-size:14px">◐</span> Drongo AI</div>
+  <div>Confidential pay-per-use settlement for AI agents · Stellar Real-World ZK</div>
+  <a href="https://github.com/ayush4345/drongo.ai" target="_blank" rel="noopener noreferrer">github.com/ayush4345/drongo.ai</a>
+</div></footer>
+
+</body>
+</html>
