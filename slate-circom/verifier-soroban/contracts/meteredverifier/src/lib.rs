@@ -43,14 +43,11 @@ impl MeteredVerifier {
     /// `public_signals` are the circuit's public inputs (BN254 scalar field
     /// elements) in the same order snarkjs emits them in `public.json`:
     /// `[channel_id, rate_commitment, escrow_amount, settlement_amount,
-    ///   nullifier, consumer_pubkey_x, consumer_pubkey_y]`.
+    ///   nullifier, consumer_pubkey_x, consumer_pubkey_y,
+    ///   depositor_hi, depositor_lo, provider_hi, provider_lo, token_hi, token_lo]`.
     ///
     /// Returns `true` iff the proof is valid for the embedded verifying key.
-    pub fn verify(
-        env: Env,
-        proof: Proof,
-        public_signals: Vec<U256>,
-    ) -> Result<bool, Error> {
+    pub fn verify(env: Env, proof: Proof, public_signals: Vec<U256>) -> Result<bool, Error> {
         if public_signals.len() != vk::N_PUBLIC {
             return Err(Error::WrongPublicInputLength);
         }

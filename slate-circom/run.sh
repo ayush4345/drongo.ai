@@ -45,3 +45,6 @@ snarkjs groth16 prove "${CIRCUIT_NAME}_final.zkey" witness.wtns proof.json publi
 
 echo "5. verifying proof"
 snarkjs groth16 verify "${CIRCUIT_NAME}_verification_key.json" public.json proof.json
+
+echo "6. generating Soroban verifier data"
+node verifier-soroban/gen_verifier_data.js

@@ -14,6 +14,15 @@ const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT_DIR = path.join(__dirname, "contracts", "meteredverifier", "src");
+const ESCROW_FIXTURE = path.join(
+  ROOT,
+  "..",
+  "contract",
+  "contracts",
+  "slate-escrow",
+  "src",
+  "fixture.rs"
+);
 
 const vk = JSON.parse(
   fs.readFileSync(path.join(ROOT, "setttlement_verification_key.json"), "utf8")
@@ -162,7 +171,9 @@ ${rustBytes(g1Hex(proof.pi_c))}
 ${pubArr}`;
 
 fs.writeFileSync(path.join(OUT_DIR, "fixture.rs"), fixtureRs);
+fs.writeFileSync(ESCROW_FIXTURE, fixtureRs);
 
 console.log("Wrote:");
 console.log("  " + path.join(OUT_DIR, "vk.rs"));
 console.log("  " + path.join(OUT_DIR, "fixture.rs"));
+console.log("  " + ESCROW_FIXTURE);

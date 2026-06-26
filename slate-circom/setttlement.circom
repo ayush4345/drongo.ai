@@ -14,6 +14,15 @@ template MeteredVerifier() {
     signal input consumer_pubkey_x;
     signal input consumer_pubkey_y;
 
+    // On-chain binding: each Soroban Address is encoded as two 128-bit limbs
+    // (high || low) of its 32-byte payload (contract ID or account Ed25519 key).
+    signal input depositor_hi;
+    signal input depositor_lo;
+    signal input provider_hi;
+    signal input provider_lo;
+    signal input token_hi;
+    signal input token_lo;
+
     signal input rate;
     signal input rate_blind;
     signal input total_units;
@@ -61,5 +70,11 @@ component main {public [
     settlement_amount,
     nullifier,
     consumer_pubkey_x,
-    consumer_pubkey_y
+    consumer_pubkey_y,
+    depositor_hi,
+    depositor_lo,
+    provider_hi,
+    provider_lo,
+    token_hi,
+    token_lo
 ]} = MeteredVerifier();
