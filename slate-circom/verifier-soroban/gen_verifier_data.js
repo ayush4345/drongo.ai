@@ -23,6 +23,15 @@ const ESCROW_FIXTURE = path.join(
   "src",
   "fixture.rs"
 );
+const REGISTRY_FIXTURE = path.join(
+  ROOT,
+  "..",
+  "contract",
+  "contracts",
+  "slate-agent-registry",
+  "src",
+  "fixture.rs"
+);
 
 const vk = JSON.parse(
   fs.readFileSync(path.join(ROOT, "setttlement_verification_key.json"), "utf8")
@@ -172,8 +181,10 @@ ${pubArr}`;
 
 fs.writeFileSync(path.join(OUT_DIR, "fixture.rs"), fixtureRs);
 fs.writeFileSync(ESCROW_FIXTURE, fixtureRs);
+fs.writeFileSync(REGISTRY_FIXTURE, fixtureRs);
 
 console.log("Wrote:");
 console.log("  " + path.join(OUT_DIR, "vk.rs"));
 console.log("  " + path.join(OUT_DIR, "fixture.rs"));
 console.log("  " + ESCROW_FIXTURE);
+console.log("  " + REGISTRY_FIXTURE);
