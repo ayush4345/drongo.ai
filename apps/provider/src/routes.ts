@@ -7,13 +7,15 @@ import { ChannelStore } from "./channels.js";
 import { type ProviderConfig, readProviderConfig } from "./config.js";
 import { DrongoChannelStore, parseDrongoOpenBody } from "./drongo-channels.js";
 import { type EventSink, JsonlFileEventSink, recordEvent } from "./events.js";
-import { buildPaymentRequiredTask, hasPaymentSignature } from "./x402.js";
+import { createPaymentVerifier, type PaymentVerifier } from "./payments.js";
+import { build402Response, buildPaymentRequirements, readPaymentHeader } from "./x402.js";
 
 export type ProviderDeps = {
   config?: ProviderConfig;
   channels?: ChannelStore;
   drongo?: DrongoChannelStore;
   events?: EventSink;
+  verifier?: PaymentVerifier;
 };
 
 export function createProviderApp(deps: ProviderDeps = {}): Express {
@@ -21,6 +23,7 @@ export function createProviderApp(deps: ProviderDeps = {}): Express {
   const channels = deps.channels ?? new ChannelStore();
   const drongo = deps.drongo ?? new DrongoChannelStore();
   const events = deps.events ?? new JsonlFileEventSink();
+  const verifier = deps.verifier ?? createPaymentVerifier(config);
   const app = express();
 
   app.use(express.json());
@@ -33,14 +36,38 @@ export function createProviderApp(deps: ProviderDeps = {}): Express {
   });
 
   app.post("/agent/open", async (request, response) => {
-    if (!hasPaymentSignature(request.headers)) {
+    // 1. x402 gate: no payment proof → 402 with the payment requirements.
+    const payment = readPaymentHeader(request.headers);
+    if (payment === null) {
       await recordEvent(events, "x402.payment_required", {
         resource: "/agent/open",
         network: config.X402_NETWORK,
       });
-      response.status(402).json(buildPaymentRequiredTask(config));
+      response.status(402).json(build402Response(config));
       return;
     }
+
+    // 2. Verify (and settle) the payment before opening anything. In mock mode
+    //    this is a stand-in; with a facilitator it actually checks + broadcasts.
+    const verification = await verifier.verifyAndSettle(
+      payment,
+      buildPaymentRequirements(config),
+    );
+    if (!verification.ok) {
+      await recordEvent(events, "x402.payment_rejected", {
+        resource: "/agent/open",
+        reason: verification.reason,
+      });
+      response.status(402).json({
+        ...build402Response(config),
+        error: `payment rejected: ${verification.reason}`,
+      });
+      return;
+    }
+    await recordEvent(events, "x402.payment_settled", {
+      resource: "/agent/open",
+      settlementTx: verification.settlementTx,
+    });
 
     const drongoOpen = parseDrongoOpenBody(
       request.body,
@@ -53,6 +80,7 @@ export function createProviderApp(deps: ProviderDeps = {}): Express {
       await recordEvent(events, "x402.channel_opened", {
         channelId: channel.channelId,
         mode: "drongo",
+        settlementTx: verification.settlementTx,
       });
       response.json({ ok: true, channel });
       return;
@@ -83,6 +111,7 @@ export function createProviderApp(deps: ProviderDeps = {}): Express {
       channelId: channel.channelId,
       openTx: channel.openTx,
       mode: "dev",
+      settlementTx: verification.settlementTx,
     });
     response.json({ ok: true, channel });
   });

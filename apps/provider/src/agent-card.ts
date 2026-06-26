@@ -15,7 +15,7 @@ export type AgentCard = {
 
 export function buildAgentCard(baseUrl = "http://localhost:4021"): AgentCard {
   return {
-    name: "ShadowMeter Provider",
+    name: "Drongo AI Provider",
     description: "Metered paid agent calls using x402 channel opening and vouchers.",
     url: baseUrl,
     skills: ["metered paid agent calls"],
