@@ -4,9 +4,11 @@ import { isWireVoucher } from "@drongo/agent";
 
 import { buildAgentCard } from "./agent-card.js";
 import { ChannelStore } from "./channels.js";
+import { MockChainAdapter } from "./chain.js";
 import { type ProviderConfig, readProviderConfig } from "./config.js";
 import { DrongoChannelStore, parseDrongoOpenBody } from "./drongo-channels.js";
 import { type EventSink, JsonlFileEventSink, recordEvent } from "./events.js";
+import { MeterDb } from "./meter-db.js";
 import { createPaymentVerifier, type PaymentVerifier } from "./payments.js";
 import { build402Response, buildPaymentRequirements, readPaymentHeader } from "./x402.js";
 
@@ -16,12 +18,14 @@ export type ProviderDeps = {
   drongo?: DrongoChannelStore;
   events?: EventSink;
   verifier?: PaymentVerifier;
+  meterDb?: MeterDb;
 };
 
 export function createProviderApp(deps: ProviderDeps = {}): Express {
   const config = deps.config ?? readProviderConfig();
-  const channels = deps.channels ?? new ChannelStore();
-  const drongo = deps.drongo ?? new DrongoChannelStore();
+  const meterDb = deps.meterDb ?? new MeterDb(config.METER_DB_PATH);
+  const channels = deps.channels ?? new ChannelStore(new MockChainAdapter(), meterDb);
+  const drongo = deps.drongo ?? new DrongoChannelStore(undefined, meterDb);
   const events = deps.events ?? new JsonlFileEventSink();
   const verifier = deps.verifier ?? createPaymentVerifier(config);
   const app = express();

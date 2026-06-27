@@ -18,6 +18,7 @@ const EnvSchema = z.object({
   SLATE_ESCROW_AMOUNT: z.string().default("20"),
   SLATE_UNIT_PRICE: z.string().default("0.002"),
   SLATE_CHAIN_MODE: z.enum(["mock", "stellar-testnet"]).default("mock"),
+  METER_DB_PATH: z.string().default("artifacts/metering.db"),
 });
 
 export type ProviderConfig = z.infer<typeof EnvSchema>;
