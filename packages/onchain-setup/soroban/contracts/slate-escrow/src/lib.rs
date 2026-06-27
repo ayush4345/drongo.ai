@@ -40,7 +40,7 @@ pub struct Proof {
 
 mod metered_verifier {
     soroban_sdk::contractimport!(
-        file = "../../../slate-circom/verifier-soroban/target/wasm32v1-none/release/meteredverifier.wasm"
+        file = "../../../target/wasm32v1-none/release/meteredverifier.wasm"
     );
 }
 
