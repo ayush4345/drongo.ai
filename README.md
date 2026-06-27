@@ -74,7 +74,9 @@ scalar field.
 # build-time (proving-setup)
 circom settlement.circom   → settlement.r1cs, settlement_js/settlement.wasm
 groth16 setup + ceremony   → settlement_final.zkey, settlement_verification_key.json
-gen_verifier_data.js       → meteredverifier/src/vk.rs (+ test fixtures)
+./run.sh                     → full local pipeline (see packages/proving-setup/run.sh)
+gen_verifier_data.js       → packages/proving-setup/scripts/gen_verifier_data.js
+                           → meteredverifier/src/vk.rs (+ test fixtures)
 
 # deploy (onchain-setup)
 deploy meteredverifier                 → verifierAddr

@@ -5,3 +5,4 @@ dist
 *.zkey
 *_verification_key.json
 *.r1cs
+artifacts/
