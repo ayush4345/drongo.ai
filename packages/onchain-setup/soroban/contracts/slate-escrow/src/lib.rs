@@ -5,6 +5,7 @@ use soroban_sdk::{
 };
 
 const N_PUBLIC: u32 = 13;
+const IDX_CHANNEL_ID: u32 = 0;
 const IDX_ESCROW_AMOUNT: u32 = 2;
 const IDX_SETTLEMENT_AMOUNT: u32 = 3;
 const IDX_NULLIFIER: u32 = 4;
@@ -19,6 +20,7 @@ const IDX_TOKEN_LO: u32 = 12;
 enum SlateEscrowType {
     WhitelistToken,
     Verifier,
+    Registry,
     DepositorBalance(DepositorKey),
     Nullifier(U256),
 }
@@ -40,7 +42,13 @@ pub struct Proof {
 
 mod metered_verifier {
     soroban_sdk::contractimport!(
-        file = "../../../target/wasm32v1-none/release/meteredverifier.wasm"
+        file = "../../target/wasm32v1-none/release/meteredverifier.wasm"
+    );
+}
+
+mod agent_registry {
+    soroban_sdk::contractimport!(
+        file = "../../target/wasm32v1-none/release/slate_agent_registry.wasm"
     );
 }
 
@@ -87,7 +95,7 @@ pub struct SlateEscrow;
 
 #[contractimpl]
 impl SlateEscrow {
-    pub fn init(env: Env, verifier: Address) {
+    pub fn init(env: Env, verifier: Address, registry: Address) {
         if env
             .storage()
             .instance()
@@ -104,12 +112,22 @@ impl SlateEscrow {
         env.storage()
             .instance()
             .set(&SlateEscrowType::Verifier, &verifier);
+        env.storage()
+            .instance()
+            .set(&SlateEscrowType::Registry, &registry);
     }
 
     pub fn get_verifier(env: Env) -> Address {
         env.storage()
             .instance()
             .get(&SlateEscrowType::Verifier)
+            .expect("Contract not initialized")
+    }
+
+    pub fn get_registry(env: Env) -> Address {
+        env.storage()
+            .instance()
+            .get(&SlateEscrowType::Registry)
             .expect("Contract not initialized")
     }
 
@@ -206,6 +224,19 @@ impl SlateEscrow {
             IDX_TOKEN_LO,
             "Token",
         );
+
+        let channel_id = public_signals
+            .get(IDX_CHANNEL_ID)
+            .expect("Missing channel_id in public signals");
+
+        let registry: Address = env
+            .storage()
+            .instance()
+            .get(&SlateEscrowType::Registry)
+            .expect("Contract not initialized");
+
+        let registry_client = agent_registry::Client::new(&env, &registry);
+        registry_client.validate_for_settlement(&channel_id, &public_signals);
 
         let verifier: Address = env
             .storage()

@@ -14,3 +14,4 @@ soroban-sdk = { workspace = true, features = ["hazmat-address"] }
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils", "hazmat-address"] }
 meteredverifier = { path = "../meteredverifier" }
+slate-agent-registry = { path = "../slate-agent-registry" }

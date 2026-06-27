@@ -78,9 +78,9 @@ gen_verifier_data.js       → meteredverifier/src/vk.rs (+ test fixtures)
 
 # deploy (onchain-setup)
 deploy meteredverifier                 → verifierAddr
-deploy slate-escrow ; escrow.init(verifierAddr)
-escrow.whitelist_token(tokenAddr)
 deploy slate-agent-registry            → registryAddr
+deploy slate-escrow ; escrow.init(verifierAddr, registryAddr)
+escrow.whitelist_token(tokenAddr)
 ```
 
 The proving key and the verifier's embedded `vk.rs` come from the same ceremony,
@@ -164,14 +164,17 @@ Inside `slate-escrow.settle`, in order:
 
 1. `public_signals.len() == 13`.
 2. Assert call-arg `depositor` / `provider` / `token` equal signals 7–12.
-3. Cross-call `meteredverifier.verify(proof, public_signals)`
+3. Cross-call `registry.validate_for_settlement(channel_id, public_signals)`
+   — channel must be registered and open; signals 0, 1, 5–12 must match the
+   stored record.
+4. Cross-call `meteredverifier.verify(proof, public_signals)`
    — reconstruct `vk_x = IC[0] + Σ signals[i]·IC[i+1]`, then
    `pairing_check(e(−A,B)·e(α,β)·e(vk_x,γ)·e(C,δ)) == 1`.
-4. Extract `escrow_amount` (2), `settlement_amount` (3), `nullifier` (4);
+5. Extract `escrow_amount` (2), `settlement_amount` (3), `nullifier` (4);
    require `settlement ≤ escrow`.
-5. Reject a spent `nullifier`, else mark it spent (replay protection).
-6. Debit the depositor's balance by `escrow_amount`.
-7. Transfer `settlement_amount → provider` and `escrow_amount − settlement_amount → depositor`.
+6. Reject a spent `nullifier`, else mark it spent (replay protection).
+7. Debit the depositor's balance by `escrow_amount`.
+8. Transfer `settlement_amount → provider` and `escrow_amount − settlement_amount → depositor`.
 
 ### Phase 7 — Wind down
 
@@ -194,7 +197,7 @@ prover:    buildSettlementInputs ◄────────────┘
            serializeSettlement ──────► { a/b/c bytes, bigint[13] }
                 │
 submitter:      ▼
-           escrow.settle ──► assert addresses ──► meteredverifier.verify ──► pay out
+           escrow.settle ──► assert addresses ──► registry.validate_for_settlement ──► meteredverifier.verify ──► pay out
 ```
 
 ---
