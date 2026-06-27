@@ -5,6 +5,13 @@ import { fileURLToPath } from "node:url";
 
 export const PACKAGE_NAME = "proving-setup";
 
+// Input/voucher building utilities (Poseidon commitments, EdDSA-Poseidon
+// vouchers, address limbs, and the high-level `buildSettlementInputs`).
+export * from "./inputs.js";
+
+// Serialization bridge: snarkjs proof + public signals -> Soroban contract layout.
+export * from "./serialize.js";
+
 /**
  * A field-element value accepted from callers. Normalised internally to a
  * `bigint`; strings may be decimal (`"123"`) or hex (`"0x7b"`).
