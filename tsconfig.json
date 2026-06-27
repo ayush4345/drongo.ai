@@ -1,0 +1,7 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/onchain-setup" },
+    { "path": "packages/proving-setup" }
+  ]
+}
