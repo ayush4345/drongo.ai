@@ -3,6 +3,8 @@
   "references": [
     { "path": "packages/onchain-setup" },
     { "path": "packages/proving-setup" },
-    { "path": "agents/weather" }
+    { "path": "packages/agent-core" },
+    { "path": "agents/provider" },
+    { "path": "agents/consumer" }
   ]
 }
