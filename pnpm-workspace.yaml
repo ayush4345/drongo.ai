@@ -2,4 +2,5 @@ packages:
   - "packages/*"
   - "agents/*"
 allowBuilds:
-  blake-hash: set this to true or false
+  blake-hash: true
+  esbuild: true

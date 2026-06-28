@@ -1,4 +1,14 @@
+import { Buffer } from "buffer";
 import type { AddressPayload, ConsumerPublicKey, SerializedSettlement } from "@drongo/proving-setup";
+import {
+  assertSorobanConfig,
+  SlateAgentRegistryClient,
+  SlateEscrowClient,
+  type SorobanConfig,
+} from "@drongo/onchain-setup";
+import { Address, Keypair } from "@stellar/stellar-sdk";
+import { basicNodeSigner } from "@stellar/stellar-sdk/contract";
+import type { ClientOptions } from "@stellar/stellar-sdk/contract";
 
 /**
  * The on-chain seam. Opening a channel = `slate-agent-registry.register_channel`
@@ -29,8 +39,86 @@ export interface ChainClient {
   settle(args: SettleArgs): Promise<{ settleTx: string }>;
 }
 
+/** Whether a 32-byte address payload is an account (G…) or contract (C…). */
+export type StellarAddressKind = "account" | "contract";
+
+export interface SorobanChainClientOptions {
+  config: SorobanConfig;
+  /** Signs `register_channel` and `add_to_depositors`. */
+  depositorKeypair: Keypair;
+  /** Signs `settle`; defaults to `depositorKeypair`. */
+  settleKeypair?: Keypair;
+  /** How to decode 32-byte payloads when they are not already G/C strkeys. */
+  addressKinds?: {
+    depositor?: StellarAddressKind;
+    provider?: StellarAddressKind;
+    token?: StellarAddressKind;
+  };
+}
+
 function shortHex(value: bigint): string {
   return value.toString(16).slice(0, 10);
+}
+
+function payloadBytes(payload: AddressPayload): Uint8Array {
+  if (payload instanceof Uint8Array) {
+    if (payload.length !== 32) {
+      throw new Error(`address payload must be 32 bytes, received ${payload.length}`);
+    }
+    return payload;
+  }
+  if (/^[GC][A-Z2-7]{55}$/.test(payload)) {
+    return Address.fromString(payload).toBuffer();
+  }
+  const hex = payload.startsWith("0x") || payload.startsWith("0X") ? payload.slice(2) : payload;
+  if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
+    throw new Error(`address payload must be a G/C strkey or 64 hex characters, received "${payload}"`);
+  }
+  const bytes = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) {
+    bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+function addressPayloadToStellarAddress(
+  payload: AddressPayload,
+  kind: StellarAddressKind,
+): string {
+  if (typeof payload === "string" && /^[GC][A-Z2-7]{55}$/.test(payload)) {
+    return payload;
+  }
+  const bytes = Buffer.from(payloadBytes(payload));
+  return kind === "contract" ? Address.contract(bytes).toString() : Address.account(bytes).toString();
+}
+
+function signedClientOptions(
+  config: SorobanConfig,
+  contractId: string,
+  keypair: Keypair,
+): ClientOptions {
+  return {
+    contractId,
+    rpcUrl: config.rpcUrl,
+    networkPassphrase: config.networkPassphrase,
+    publicKey: keypair.publicKey(),
+    ...basicNodeSigner(keypair, config.networkPassphrase),
+  };
+}
+
+function toEscrowProof(settlement: SerializedSettlement) {
+  return {
+    a: Buffer.from(settlement.proof.a),
+    b: Buffer.from(settlement.proof.b),
+    c: Buffer.from(settlement.proof.c),
+  };
+}
+
+function assertEscrowAmount(amount: bigint): void {
+  const max = (1n << 127n) - 1n;
+  if (amount <= 0n || amount > max) {
+    throw new Error(`escrow amount must be a positive i128, received ${amount}`);
+  }
 }
 
 /**
@@ -54,22 +142,94 @@ export class MockChainClient implements ChainClient {
 
 /**
  * Real Stellar settlement via the Soroban contracts in `@drongo/onchain-setup`.
- * NOT yet wired: `onchain-setup` exposes no TypeScript bindings today, so this
- * needs (1) generated contract bindings or `@stellar/stellar-sdk`, (2) the
- * deployed `slate-escrow` / `slate-agent-registry` contract IDs, (3) the USDC
- * SEP-41 token, and (4) a funded Stellar signer. Until then it throws so callers
- * fail loudly rather than silently no-op.
+ * Requires deployed contract IDs, a funded depositor keypair, and Stellar
+ * addresses that match the 32-byte payloads embedded in settlement proofs.
  */
 export class SorobanChainClient implements ChainClient {
-  async openChannel(_args: OpenChannelArgs): Promise<{ channelId: string; openTx: string }> {
-    throw new Error(
-      "SorobanChainClient not configured: register_channel + add_to_depositors need @drongo/onchain-setup TS bindings, deployed contract IDs, the USDC SEP-41 token, and a Stellar signer.",
-    );
+  private readonly config: SorobanConfig;
+  private readonly depositorKeypair: Keypair;
+  private readonly settleKeypair: Keypair;
+  private readonly addressKinds: {
+    depositor: StellarAddressKind;
+    provider: StellarAddressKind;
+    token: StellarAddressKind;
+  };
+
+  constructor(options: SorobanChainClientOptions) {
+    assertSorobanConfig(options.config);
+    this.config = options.config;
+    this.depositorKeypair = options.depositorKeypair;
+    this.settleKeypair = options.settleKeypair ?? options.depositorKeypair;
+    this.addressKinds = {
+      depositor: options.addressKinds?.depositor ?? "account",
+      provider: options.addressKinds?.provider ?? "account",
+      token: options.addressKinds?.token ?? "contract",
+    };
   }
 
-  async settle(_args: SettleArgs): Promise<{ settleTx: string }> {
-    throw new Error(
-      "SorobanChainClient not configured: slate-escrow.settle needs the deployed escrow contract ID and a Stellar signer; wire @drongo/onchain-setup first.",
+  async openChannel(args: OpenChannelArgs): Promise<{ channelId: string; openTx: string }> {
+    assertEscrowAmount(args.escrow);
+
+    const depositor = addressPayloadToStellarAddress(args.depositor, this.addressKinds.depositor);
+    const provider = addressPayloadToStellarAddress(args.provider, this.addressKinds.provider);
+    const token = addressPayloadToStellarAddress(args.token, this.addressKinds.token);
+
+    const registry = new SlateAgentRegistryClient(
+      signedClientOptions(this.config, this.config.slateAgentRegistryId, this.depositorKeypair),
     );
+    const registerTx = await registry.register_channel({
+      channel_id: args.channelId,
+      rate_commitment: args.rateCommitment,
+      consumer_pubkey_x: args.consumerPublicKey.x,
+      consumer_pubkey_y: args.consumerPublicKey.y,
+      depositor,
+      provider,
+      token,
+    });
+    const registerSent = await registerTx.signAndSend();
+
+    const escrow = new SlateEscrowClient(
+      signedClientOptions(this.config, this.config.slateEscrowId, this.depositorKeypair),
+    );
+    const depositTx = await escrow.add_to_depositors({
+      address: depositor,
+      amount: args.escrow,
+      token_address: token,
+    });
+    const depositSent = await depositTx.signAndSend();
+
+    const registerHash = registerSent.sendTransactionResponse?.hash;
+    const depositHash = depositSent.sendTransactionResponse?.hash;
+    if (!registerHash || !depositHash) {
+      throw new Error("openChannel transactions submitted without a hash");
+    }
+
+    return {
+      channelId: args.channelId.toString(),
+      openTx: `${registerHash},${depositHash}`,
+    };
+  }
+
+  async settle(args: SettleArgs): Promise<{ settleTx: string }> {
+    const depositor = addressPayloadToStellarAddress(args.depositor, this.addressKinds.depositor);
+    const provider = addressPayloadToStellarAddress(args.provider, this.addressKinds.provider);
+    const token = addressPayloadToStellarAddress(args.token, this.addressKinds.token);
+
+    const escrow = new SlateEscrowClient(
+      signedClientOptions(this.config, this.config.slateEscrowId, this.settleKeypair),
+    );
+    const settleTx = await escrow.settle({
+      proof: toEscrowProof(args.settlement),
+      public_signals: args.settlement.publicSignals,
+      depositor,
+      provider,
+      token,
+    });
+    const sent = await settleTx.signAndSend();
+    const hash = sent.sendTransactionResponse?.hash;
+    if (!hash) {
+      throw new Error("settle transaction submitted without a hash");
+    }
+    return { settleTx: hash };
   }
 }
