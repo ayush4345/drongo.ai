@@ -6,9 +6,25 @@ import {
   SlateEscrowClient,
   type SorobanConfig,
 } from "@drongo/onchain-setup";
-import { Address, Keypair } from "@stellar/stellar-sdk";
+import { Address, Keypair, rpc, SorobanDataBuilder, TransactionBuilder } from "@stellar/stellar-sdk";
 import { basicNodeSigner } from "@stellar/stellar-sdk/contract";
-import type { ClientOptions } from "@stellar/stellar-sdk/contract";
+import type {
+  AssembledTransaction,
+  ClientOptions,
+  MethodOptions,
+  SentTransaction,
+} from "@stellar/stellar-sdk/contract";
+
+/** Groth16 settle + token transfers need a large Soroban resource budget on testnet. */
+const SETTLE_METHOD_OPTIONS: MethodOptions = {
+  fee: "5000000",
+  restore: true,
+  // Dropped txs stay NOT_FOUND; fail fast and retry rather than blocking 5+ minutes.
+  timeoutInSeconds: 120,
+};
+
+/** Multiply simulated resource fee — pairing verify can exceed the RPC minimum. */
+const SETTLE_RESOURCE_FEE_MULTIPLIER = 2n;
 
 /**
  * The on-chain seam. Opening a channel = `slate-agent-registry.register_channel`
@@ -92,18 +108,133 @@ function addressPayloadToStellarAddress(
   return kind === "contract" ? Address.contract(bytes).toString() : Address.account(bytes).toString();
 }
 
+function createRpcServer(config: SorobanConfig): rpc.Server {
+  return new rpc.Server(config.rpcUrl.replace(/\/$/, ""));
+}
+
 function signedClientOptions(
   config: SorobanConfig,
   contractId: string,
   keypair: Keypair,
+  server?: rpc.Server,
 ): ClientOptions {
   return {
     contractId,
     rpcUrl: config.rpcUrl,
     networkPassphrase: config.networkPassphrase,
     publicKey: keypair.publicKey(),
+    ...(server ? { server } : {}),
     ...basicNodeSigner(keypair, config.networkPassphrase),
   };
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function assertTransactionSucceeded<T>(label: string, sent: SentTransaction<T>): void {
+  const status = sent.getTransactionResponse?.status;
+  if (status !== rpc.Api.GetTransactionStatus.SUCCESS) {
+    throw new Error(`${label} transaction did not succeed (status: ${status ?? "unknown"})`);
+  }
+}
+
+function isTxBadSeqError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  // SendFailedError often embeds txBadSeq in serialized errorResult, not in .message.
+  const blob = `${err.message}\n${err.stack ?? ""}\n${JSON.stringify(err, null, 2)}`;
+  return blob.includes("txBadSeq");
+}
+
+function isTransactionStillPendingError(err: unknown): boolean {
+  return err instanceof Error && err.constructor.name === "TransactionStillPendingError";
+}
+
+function isRetriableSendError(err: unknown): boolean {
+  return isTxBadSeqError(err) || isTransactionStillPendingError(err);
+}
+
+function bumpSorobanResourceFee<T>(tx: AssembledTransaction<T>, multiplier: bigint): void {
+  if (!tx.built) {
+    throw new Error("transaction not built after simulation");
+  }
+  const data = tx.simulationData.transactionData;
+  const bumped = new SorobanDataBuilder(data.toXDR())
+    .setResourceFee(data.resourceFee().toBigInt() * multiplier)
+    .build();
+  tx.built = TransactionBuilder.cloneFrom(tx.built, { sorobanData: bumped }).build();
+}
+
+/** Expected envelope sequence for the account's current on-ledger sequence. */
+function expectedTxSequence(accountSequence: string): string {
+  return (BigInt(accountSequence) + 1n).toString();
+}
+
+function assertFreshTxSequence<T>(
+  tx: AssembledTransaction<T>,
+  accountSequence: string,
+  label: string,
+): void {
+  const builtSeq = tx.built?.sequence;
+  const expected = expectedTxSequence(accountSequence);
+  if (builtSeq !== undefined && builtSeq !== expected) {
+    throw new Error(
+      `${label} assembled with stale sequence ${builtSeq}; network expects ${expected}`,
+    );
+  }
+}
+
+/**
+ * Assemble, sign, and send with retries when the Soroban RPC returns `txBadSeq`.
+ * Each attempt builds a fresh contract client so sequence numbers are not cached.
+ */
+async function signAndSendWithRetry<T>(
+  assemble: (server: rpc.Server) => Promise<AssembledTransaction<T>>,
+  server: rpc.Server,
+  publicKey: string,
+  label: string,
+  maxAttempts = 8,
+  afterAssemble?: (tx: AssembledTransaction<T>) => void,
+): Promise<SentTransaction<T>> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (attempt === 0) {
+      console.log(`  chain: ${label}…`);
+    } else {
+      console.log(`  chain: ${label} retry ${attempt + 1}/${maxAttempts}…`);
+    }
+
+    const accountSequence = (await server.getAccount(publicKey)).sequenceNumber();
+    const tx = await assemble(server);
+    afterAssemble?.(tx);
+    const builtSeq = tx.built?.sequence;
+    const expected = expectedTxSequence(accountSequence);
+
+    if (builtSeq !== undefined && builtSeq !== expected) {
+      if (attempt < maxAttempts - 1) {
+        await sleep(500 * (attempt + 1));
+        continue;
+      }
+      assertFreshTxSequence(tx, accountSequence, label);
+    }
+
+    try {
+      const sent = await tx.signAndSend();
+      assertTransactionSucceeded(label, sent);
+      return sent;
+    } catch (err) {
+      lastError = err;
+      if (!isRetriableSendError(err) || attempt === maxAttempts - 1) throw err;
+      const delayMs = isTransactionStillPendingError(err) ? 2000 : 800 * (attempt + 1);
+      console.log(
+        `  chain: ${label} send failed (${err instanceof Error ? err.constructor.name : "unknown"}), retrying…`,
+      );
+      await sleep(delayMs);
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`${label} signAndSend failed after ${maxAttempts} attempts`);
 }
 
 function toEscrowProof(settlement: SerializedSettlement) {
@@ -174,29 +305,45 @@ export class SorobanChainClient implements ChainClient {
     const provider = addressPayloadToStellarAddress(args.provider, this.addressKinds.provider);
     const token = addressPayloadToStellarAddress(args.token, this.addressKinds.token);
 
-    const registry = new SlateAgentRegistryClient(
-      signedClientOptions(this.config, this.config.slateAgentRegistryId, this.depositorKeypair),
-    );
-    const registerTx = await registry.register_channel({
-      channel_id: args.channelId,
-      rate_commitment: args.rateCommitment,
-      consumer_pubkey_x: args.consumerPublicKey.x,
-      consumer_pubkey_y: args.consumerPublicKey.y,
-      depositor,
-      provider,
-      token,
-    });
-    const registerSent = await registerTx.signAndSend();
+    const server = createRpcServer(this.config);
+    const depositorPublic = this.depositorKeypair.publicKey();
 
-    const escrow = new SlateEscrowClient(
-      signedClientOptions(this.config, this.config.slateEscrowId, this.depositorKeypair),
+    const registerSent = await signAndSendWithRetry(
+      (rpcServer) =>
+        new SlateAgentRegistryClient(
+          signedClientOptions(
+            this.config,
+            this.config.slateAgentRegistryId,
+            this.depositorKeypair,
+            rpcServer,
+          ),
+        ).register_channel({
+          channel_id: args.channelId,
+          rate_commitment: args.rateCommitment,
+          consumer_pubkey_x: args.consumerPublicKey.x,
+          consumer_pubkey_y: args.consumerPublicKey.y,
+          depositor,
+          provider,
+          token,
+        }),
+      server,
+      depositorPublic,
+      "register_channel",
     );
-    const depositTx = await escrow.add_to_depositors({
-      address: depositor,
-      amount: args.escrow,
-      token_address: token,
-    });
-    const depositSent = await depositTx.signAndSend();
+
+    const depositSent = await signAndSendWithRetry(
+      (rpcServer) =>
+        new SlateEscrowClient(
+          signedClientOptions(this.config, this.config.slateEscrowId, this.depositorKeypair, rpcServer),
+        ).add_to_depositors({
+          address: depositor,
+          amount: args.escrow,
+          token_address: token,
+        }),
+      server,
+      depositorPublic,
+      "add_to_depositors",
+    );
 
     const registerHash = registerSent.sendTransactionResponse?.hash;
     const depositHash = depositSent.sendTransactionResponse?.hash;
@@ -215,17 +362,33 @@ export class SorobanChainClient implements ChainClient {
     const provider = addressPayloadToStellarAddress(args.provider, this.addressKinds.provider);
     const token = addressPayloadToStellarAddress(args.token, this.addressKinds.token);
 
-    const escrow = new SlateEscrowClient(
-      signedClientOptions(this.config, this.config.slateEscrowId, this.settleKeypair),
+    const server = createRpcServer(this.config);
+    const settlePublic = this.settleKeypair.publicKey();
+    const sent = await signAndSendWithRetry(
+      (rpcServer) =>
+        new SlateEscrowClient(
+          signedClientOptions(this.config, this.config.slateEscrowId, this.settleKeypair, rpcServer),
+        ).settle(
+          {
+            proof: toEscrowProof(args.settlement),
+            public_signals: args.settlement.publicSignals,
+            depositor,
+            provider,
+            token,
+          },
+          SETTLE_METHOD_OPTIONS,
+        ),
+      server,
+      settlePublic,
+      "settle",
+      8,
+      (tx) => {
+        bumpSorobanResourceFee(tx, SETTLE_RESOURCE_FEE_MULTIPLIER);
+        if (tx.built?.fee) {
+          console.log(`  chain: settle max fee ${tx.built.fee} stroops`);
+        }
+      },
     );
-    const settleTx = await escrow.settle({
-      proof: toEscrowProof(args.settlement),
-      public_signals: args.settlement.publicSignals,
-      depositor,
-      provider,
-      token,
-    });
-    const sent = await settleTx.signAndSend();
     const hash = sent.sendTransactionResponse?.hash;
     if (!hash) {
       throw new Error("settle transaction submitted without a hash");

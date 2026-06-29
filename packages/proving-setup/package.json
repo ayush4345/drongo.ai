@@ -17,6 +17,7 @@
   "scripts": {
     "build": "tsc -b",
     "clean": "rm -rf dist *.tsbuildinfo",
+    "gen:verifier": "node scripts/gen_verifier_data.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

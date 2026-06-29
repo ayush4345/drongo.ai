@@ -114,7 +114,9 @@ async function main(): Promise<void> {
   // ── SETTLE (one ZK proof) ─────────────────────────────────────────────
   console.log(`\n═══ SETTLE — one on-chain settlement (${mode}) ═══`);
   const served = lookups.filter((l) => l.served).length;
+  console.log("  generating Groth16 proof (CPU-heavy, ~30–90s)…");
   const settlement = await channel.close(); // generates the real Groth16 proof
+  console.log("  proof ready, submitting on-chain…");
   const settled = await chain.settle({
     settlement: settlement.serialized,
     depositor: depositorPayload,
