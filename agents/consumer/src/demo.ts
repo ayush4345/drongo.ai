@@ -19,7 +19,18 @@ import { WeatherConsumerAgent } from "./consumer.js";
 // Load the monorepo-root .env (…/drongo.ai/.env) regardless of the directory the
 // demo is run from. A missing file is fine — the demo then runs in offline mock
 // mode. .env is gitignored, so secrets like DEPOSITOR_SECRET stay out of git.
-loadEnv({ path: resolve(dirname(fileURLToPath(import.meta.url)), "../../../.env") });
+const envPath = resolve(dirname(fileURLToPath(import.meta.url)), "../../../.env");
+const envLoad = loadEnv({ path: envPath });
+if (envLoad.error) {
+  console.log(`env: no .env found at ${envPath} (${envLoad.error.message})`);
+} else {
+  const keys = Object.keys(envLoad.parsed ?? {});
+  const hasSecret = keys.includes("DEPOSITOR_SECRET");
+  console.log(
+    `env: loaded ${keys.length} var(s) from ${envPath}` +
+      (hasSecret ? "" : " — DEPOSITOR_SECRET NOT among them (check for an `export` prefix or typo)"),
+  );
+}
 
 /** A random BN254 field element (31 random bytes stays below the prime). */
 function randField(): bigint {
@@ -38,6 +49,9 @@ async function main(): Promise<void> {
   // Real Stellar settlement when DEPOSITOR_SECRET + contract IDs are configured;
   // otherwise an in-memory mock so the demo always runs offline.
   const real = realChainFromEnv();
+  if (!real) {
+    console.log("note: MOCK mode — DEPOSITOR_SECRET is not set in the environment.");
+  }
   const chain: ChainClient = real?.chain ?? new MockChainClient();
   const mode = real ? "REAL Soroban (Stellar testnet)" : "mock (offline)";
 
