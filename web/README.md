@@ -6,10 +6,11 @@ dashboard** (see your agents, watch the provider get used and charged, inspect
 channel settlements) will live here next.
 
 Built with the **App Router**, **TypeScript**, and `next/font` for self-hosted
-**Manrope** + **JetBrains Mono**. The visual language — dark / light / accent
-section rhythm, a single mint accent, SVG diagrams, and physics-eased motion —
-is hand-authored CSS in [`app/globals.css`](./app/globals.css), deliberately
-free of the "AI-generated" tells (no emoji icons, no gradient text, one hue).
+**Inter Tight** and **Playfair Display**. The visual language — dark / light /
+accent section rhythm, a single mint accent, SVG diagrams, and physics-eased
+motion — is hand-authored CSS in [`app/globals.css`](./app/globals.css),
+deliberately free of the "AI-generated" tells (no emoji icons, no gradient text,
+one hue).
 
 ## Run it
 
@@ -24,7 +25,7 @@ npm run build      # production build
 npm run start      # serve the production build
 ```
 
-> `next/font` fetches the Manrope / JetBrains Mono files at build time, so the
+> `next/font` fetches the Inter Tight / Playfair Display files at build time, so the
 > first `dev`/`build` needs network access; after that they're cached and
 > self-hosted (no runtime requests to Google Fonts).
 
