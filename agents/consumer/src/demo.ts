@@ -1,4 +1,7 @@
 import { randomBytes } from "node:crypto";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { config as loadEnv } from "dotenv";
 import { computeRateCommitment } from "@drongo/proving-setup";
 import {
   ServiceChannel,
@@ -12,6 +15,11 @@ import { WeatherService, FetchHttpClient } from "@drongo/agent-provider";
 import { StubLlmClient } from "./llm.js";
 import { OpenAiLlmClient } from "./openai-client.js";
 import { WeatherConsumerAgent } from "./consumer.js";
+
+// Load the monorepo-root .env (…/drongo.ai/.env) regardless of the directory the
+// demo is run from. A missing file is fine — the demo then runs in offline mock
+// mode. .env is gitignored, so secrets like DEPOSITOR_SECRET stay out of git.
+loadEnv({ path: resolve(dirname(fileURLToPath(import.meta.url)), "../../../.env") });
 
 /** A random BN254 field element (31 random bytes stays below the prime). */
 function randField(): bigint {

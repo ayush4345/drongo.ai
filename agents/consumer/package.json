@@ -23,6 +23,7 @@
     "@drongo/agent-core": "workspace:*",
     "@drongo/agent-provider": "workspace:*",
     "@drongo/proving-setup": "workspace:*",
+    "dotenv": "^16.4.5",
     "openai": "^4.57.0"
   },
   "devDependencies": {
