@@ -1,7 +1,13 @@
 import { randomBytes } from "node:crypto";
 import { computeRateCommitment } from "@drongo/proving-setup";
-import { ServiceChannel, MockChainClient, parseUsdToMicros, formatMicros } from "@drongo/agent-core";
-import type { ChannelTerms } from "@drongo/agent-core";
+import {
+  ServiceChannel,
+  MockChainClient,
+  realChainFromEnv,
+  parseUsdToMicros,
+  formatMicros,
+} from "@drongo/agent-core";
+import type { ChainClient, ChannelTerms } from "@drongo/agent-core";
 import { WeatherService, FetchHttpClient } from "@drongo/agent-provider";
 import { StubLlmClient } from "./llm.js";
 import { OpenAiLlmClient } from "./openai-client.js";
@@ -15,8 +21,20 @@ function randField(): bigint {
 async function main(): Promise<void> {
   const goal = process.argv.slice(2).join(" ") || "Which is warmest right now: Tokyo, London, or Cairo?";
 
-  const rate = parseUsdToMicros("0.002"); // PRIVATE per-call rate
-  const escrow = parseUsdToMicros("20"); // public escrow ceiling
+  const rate = parseUsdToMicros(process.env.RATE_USDC ?? "0.002"); // PRIVATE per-call rate
+  const escrow = parseUsdToMicros(process.env.ESCROW_USDC ?? "0.1"); // public escrow ceiling
+
+  // Real Stellar settlement when DEPOSITOR_SECRET + contract IDs are configured;
+  // otherwise an in-memory mock so the demo always runs offline.
+  const real = realChainFromEnv();
+  const chain: ChainClient = real?.chain ?? new MockChainClient();
+  const mode = real ? "REAL Soroban (Stellar testnet)" : "mock (offline)";
+
+  // The same 32-byte payloads must be bound into the proof AND used on-chain, so
+  // the contract's address checks in settle() match the proof's public signals.
+  const depositorPayload = real?.depositorPayload ?? randomBytes(32);
+  const providerPayload = real?.providerPayload ?? randomBytes(32);
+  const tokenPayload = real?.tokenPayload ?? randomBytes(32);
 
   const terms: ChannelTerms = {
     channelId: randField(),
@@ -25,31 +43,31 @@ async function main(): Promise<void> {
     escrow,
     channelSecret: randField(),
     consumerPrivateKey: randomBytes(32),
-    depositorPayload: randomBytes(32),
-    providerPayload: randomBytes(32),
-    tokenPayload: randomBytes(32),
+    depositorPayload,
+    providerPayload,
+    tokenPayload,
   };
 
-  const chain = new MockChainClient();
   const channel = await ServiceChannel.open(terms, new WeatherService(new FetchHttpClient(), 1n));
 
   // ── OPEN ──────────────────────────────────────────────────────────────
   const rateCommitment = await computeRateCommitment(rate, terms.rateBlind);
+  console.log("═══ OPEN CHANNEL ═══");
+  console.log(`  settlement chain:  ${mode}`);
+  if (real) console.log(`  addresses:         ${real.label}`);
+  console.log(`  rate (PRIVATE):    ${formatMicros(rate)} USDC / call`);
+  console.log(`  escrow (public):   ${formatMicros(escrow)} USDC`);
+  console.log(`  rate commitment:   ${rateCommitment.toString().slice(0, 16)}…  (Poseidon(rate, blind))`);
+
   const opened = await chain.openChannel({
     channelId: terms.channelId,
     rateCommitment,
     consumerPublicKey: channel.consumerPublicKey,
-    depositor: terms.depositorPayload,
-    provider: terms.providerPayload,
-    token: terms.tokenPayload,
+    depositor: depositorPayload,
+    provider: providerPayload,
+    token: tokenPayload,
     escrow,
   });
-
-  console.log("═══ OPEN CHANNEL ═══");
-  console.log(`  channel:           ${opened.channelId.slice(0, 12)}…`);
-  console.log(`  rate (PRIVATE):    ${formatMicros(rate)} USDC / call`);
-  console.log(`  escrow (public):   ${formatMicros(escrow)} USDC`);
-  console.log(`  rate commitment:   ${rateCommitment.toString().slice(0, 16)}…  (Poseidon(rate, blind))`);
   console.log(`  open tx:           ${opened.openTx}`);
 
   // ── METER (off-chain, per call) ───────────────────────────────────────
@@ -66,14 +84,14 @@ async function main(): Promise<void> {
   console.log(`  answer: ${answer}`);
 
   // ── SETTLE (one ZK proof) ─────────────────────────────────────────────
-  console.log(`\n═══ SETTLE — one on-chain settlement ═══`);
+  console.log(`\n═══ SETTLE — one on-chain settlement (${mode}) ═══`);
   const served = lookups.filter((l) => l.served).length;
   const settlement = await channel.close(); // generates the real Groth16 proof
   const settled = await chain.settle({
     settlement: settlement.serialized,
-    depositor: terms.depositorPayload,
-    provider: terms.providerPayload,
-    token: terms.tokenPayload,
+    depositor: depositorPayload,
+    provider: providerPayload,
+    token: tokenPayload,
   });
 
   const settlementMicros = settlement.serialized.publicSignals[3] ?? 0n;
@@ -83,6 +101,9 @@ async function main(): Promise<void> {
   console.log(`  proof bytes:             a=${settlement.serialized.proof.a.length} b=${settlement.serialized.proof.b.length} c=${settlement.serialized.proof.c.length}`);
   console.log(`  public signals:          ${settlement.serialized.publicSignals.length} (13-signal layout)`);
   console.log(`  settle tx:               ${settled.settleTx}`);
+  if (real) {
+    console.log(`\n  view on explorer: https://stellar.expert/explorer/testnet/tx/${settled.settleTx}`);
+  }
 }
 
 main().catch((error) => {
