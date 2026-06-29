@@ -53,6 +53,14 @@ export async function escrowGetVerifier(config: SorobanConfig): Promise<string> 
   return unwrapSimulationResult(tx.result);
 }
 
+/** Read the agent registry contract address configured on `slate-escrow`. */
+export async function escrowGetRegistry(config: SorobanConfig): Promise<string> {
+  assertSorobanConfig(config);
+  const client = new SlateEscrowClient(readOnlyClientOptions(config, config.slateEscrowId));
+  const tx = await client.get_registry();
+  return unwrapSimulationResult(tx.result);
+}
+
 /** Read a depositor's internal escrow balance for a token (micro-units). */
 export async function escrowGetBalance(
   config: SorobanConfig,
