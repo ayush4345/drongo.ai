@@ -19,7 +19,9 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@drongo/proving-setup": "workspace:*"
+    "@drongo/onchain-setup": "workspace:*",
+    "@drongo/proving-setup": "workspace:*",
+    "@stellar/stellar-sdk": "^16.0.1"
   },
   "devDependencies": {
     "@types/node": "^26.0.1",
