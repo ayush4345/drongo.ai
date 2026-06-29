@@ -9,6 +9,7 @@ import {
 } from "@slate/protocol";
 
 import { type ChainAdapter, MockChainAdapter } from "./chain.js";
+import type { MeterDb } from "./meter-db.js";
 
 export type OpenChannelInput = {
   consumer: string;
@@ -47,8 +48,20 @@ type ChannelState = {
 export class ChannelStore {
   readonly #channels = new Map<string, ChannelState>();
   #nextChannelNumber = 1;
+  readonly chainAdapter: ChainAdapter;
 
-  constructor(readonly chainAdapter: ChainAdapter = new MockChainAdapter()) {}
+  constructor(chainAdapter?: ChainAdapter, private readonly meterDb?: MeterDb) {
+    this.chainAdapter = chainAdapter ?? new MockChainAdapter();
+    if (meterDb !== undefined) {
+      for (const snapshot of meterDb.loadDevChannels()) {
+        this.#channels.set(snapshot.channel.channelId, {
+          channel: snapshot.channel,
+          lastAcceptedUnits: BigInt(snapshot.lastAcceptedUnits),
+          finalVoucher: snapshot.finalVoucher,
+        });
+      }
+    }
+  }
 
   async openChannel(input: OpenChannelInput): Promise<Channel> {
     const commitment = rateCommitment(input.escrowAmount, input.unitPrice);
@@ -79,6 +92,11 @@ export class ChannelStore {
     this.#channels.set(channel.channelId, {
       channel,
       lastAcceptedUnits: 0n,
+    });
+
+    this.meterDb?.saveDevChannel({
+      channel,
+      lastAcceptedUnits: "0",
     });
 
     return channel;
@@ -117,6 +135,12 @@ export class ChannelStore {
 
     state.lastAcceptedUnits = cumulativeUnits;
     state.finalVoucher = parsedVoucher.data;
+
+    this.meterDb?.updateDevVoucher(
+      channelId,
+      parsedVoucher.data.cumulativeUnits,
+      parsedVoucher.data,
+    );
 
     return {
       ok: true,

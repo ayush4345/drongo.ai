@@ -31,7 +31,7 @@ describe("provider routes", () => {
       const body = await response.json();
 
       expect(response.status).toBe(200);
-      expect(body.name).toBe("ShadowMeter Provider");
+      expect(body.name).toBe("Drongo AI Provider");
       expect(body.skills).toContain("metered paid agent calls");
       expect(body.extensions).toContainEqual(
         expect.objectContaining({
@@ -52,19 +52,24 @@ describe("provider routes", () => {
       });
       const body = await response.json();
 
+      // Spec-shaped 402: x402Version + accepts[] of PaymentRequirements.
       expect(response.status).toBe(402);
-      expect(body.state).toBe("input-required");
-      expect(body.payment).toMatchObject({
-        network: "stellar:testnet",
+      expect(body.x402Version).toBe(1);
+      expect(Array.isArray(body.accepts)).toBe(true);
+
+      const requirements = body.accepts[0];
+      expect(requirements).toMatchObject({
         scheme: "exact",
+        network: "stellar:testnet",
         payTo: "mock_provider",
+        resource: "/agent/open",
+        asset: "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
+        maxAmountRequired: "20000000",
+      });
+      expect(requirements.extra).toMatchObject({
         escrowAmount: "20",
         unitPrice: "0.002",
-        resource: "/agent/open",
       });
-      expect(body.payment.rateCommitment).toBe(
-        "rate:v1:escrow=20;unit=0.002;max=10000",
-      );
     });
   });
 
@@ -75,7 +80,7 @@ describe("provider routes", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "PAYMENT-SIGNATURE": "mock_payment_signature",
+          "X-PAYMENT": "mock_payment_signature",
         },
         body: JSON.stringify({ consumer: await signer.publicKey() }),
       });
