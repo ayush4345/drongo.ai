@@ -11,7 +11,12 @@ import {
   type VerifierPublicSignals,
 } from "@drongo/onchain-setup";
 
-export type { ChannelEntry, SorobanConfig, VerifierProof, VerifierPublicSignals };
+export type {
+  ChannelEntry,
+  SorobanConfig,
+  VerifierProof,
+  VerifierPublicSignals,
+};
 
 function resolveConfig(config?: SorobanConfig): SorobanConfig {
   return config ?? sorobanConfigFromEnv();
@@ -30,7 +35,9 @@ export async function verifierVerify(
 export const VerifierVerify = verifierVerify;
 
 /** Read the verifier contract address stored on `slate-escrow`. */
-export async function escrowGetVerifier(config?: SorobanConfig): Promise<string> {
+export async function escrowGetVerifier(
+  config?: SorobanConfig,
+): Promise<string> {
   return onchainEscrowGetVerifier(resolveConfig(config));
 }
 

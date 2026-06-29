@@ -1,7 +1,7 @@
 #![no_std]
 use soroban_sdk::{
-    address_payload::AddressPayload, contract, contractimpl, contracttype, Address, BytesN, Env,
-    Vec, U256,
+    address_payload::AddressPayload, contract, contracterror, contractimpl, contracttype, Address,
+    BytesN, Env, Vec, U256,
 };
 
 /// Number of public inputs in the metered settlement circuit.
@@ -54,13 +54,37 @@ enum DataKey {
     Channel(U256),
 }
 
-fn address_payload_bytes(address: &Address) -> BytesN<32> {
-    match address
-        .to_payload()
-        .expect("address type is not supported for channel binding")
-    {
-        AddressPayload::AccountIdPublicKeyEd25519(bytes) => bytes,
-        AddressPayload::ContractIdHash(bytes) => bytes,
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum Error {
+    ChannelAlreadyRegistered = 1,
+    ChannelNotFound = 2,
+    WrongPublicInputLength = 3,
+    ChannelIdMismatch = 4,
+    ChannelNotOpen = 5,
+    RateCommitmentMismatch = 6,
+    ConsumerPubkeyMismatch = 7,
+    DepositorMismatch = 8,
+    ProviderMismatch = 9,
+    TokenMismatch = 10,
+    ChannelAlreadyClosed = 11,
+    UnauthorizedCloser = 12,
+    UnsupportedAddress = 13,
+    MissingPublicSignal = 14,
+}
+
+enum AddressRole {
+    Depositor,
+    Provider,
+    Token,
+}
+
+fn address_payload_bytes(address: &Address) -> Result<BytesN<32>, Error> {
+    match address.to_payload() {
+        Some(AddressPayload::AccountIdPublicKeyEd25519(bytes)) => Ok(bytes),
+        Some(AddressPayload::ContractIdHash(bytes)) => Ok(bytes),
+        _ => Err(Error::UnsupportedAddress),
     }
 }
 
@@ -71,33 +95,39 @@ fn address_to_field_pair(env: &Env, bytes: &BytesN<32>) -> (U256, U256) {
     (U256::from_u128(env, hi), U256::from_u128(env, lo))
 }
 
-fn assert_address_matches_signals(
+fn check_address_matches_signals(
     env: &Env,
     address: &Address,
     public_signals: &Vec<U256>,
     hi_idx: u32,
     lo_idx: u32,
-    label: &str,
-) {
-    let (hi, lo) = address_to_field_pair(env, &address_payload_bytes(address));
+    role: AddressRole,
+) -> Result<(), Error> {
+    let (hi, lo) = address_to_field_pair(env, &address_payload_bytes(address)?);
     let signal_hi = public_signals
         .get(hi_idx)
-        .unwrap_or_else(|| panic!("Missing {label} high limb in public signals"));
+        .ok_or(Error::MissingPublicSignal)?;
     let signal_lo = public_signals
         .get(lo_idx)
-        .unwrap_or_else(|| panic!("Missing {label} low limb in public signals"));
+        .ok_or(Error::MissingPublicSignal)?;
 
     if signal_hi != hi || signal_lo != lo {
-        panic!("{label} does not match proof public inputs");
+        return Err(match role {
+            AddressRole::Depositor => Error::DepositorMismatch,
+            AddressRole::Provider => Error::ProviderMismatch,
+            AddressRole::Token => Error::TokenMismatch,
+        });
     }
+
+    Ok(())
 }
 
-fn load_channel(env: &Env, channel_id: &U256) -> ChannelEntry {
+fn load_channel(env: &Env, channel_id: &U256) -> Result<ChannelEntry, Error> {
     let key = DataKey::Channel(channel_id.clone());
     env.storage()
         .persistent()
         .get(&key)
-        .unwrap_or_else(|| panic!("Channel not found"))
+        .ok_or(Error::ChannelNotFound)
 }
 
 #[contract]
@@ -119,12 +149,12 @@ impl SlateAgentRegistry {
         depositor: Address,
         provider: Address,
         token: Address,
-    ) {
+    ) -> Result<(), Error> {
         depositor.require_auth();
 
         let key = DataKey::Channel(channel_id.clone());
         if env.storage().persistent().has(&key) {
-            panic!("Channel already registered");
+            return Err(Error::ChannelAlreadyRegistered);
         }
 
         let entry = ChannelEntry {
@@ -140,10 +170,11 @@ impl SlateAgentRegistry {
         };
 
         env.storage().persistent().set(&key, &entry);
+        Ok(())
     }
 
     /// Return the channel record and lifecycle status for `channel_id`.
-    pub fn get_channel(env: Env, channel_id: U256) -> ChannelEntry {
+    pub fn get_channel(env: Env, channel_id: U256) -> Result<ChannelEntry, Error> {
         load_channel(&env, &channel_id)
     }
 
@@ -158,72 +189,78 @@ impl SlateAgentRegistry {
     /// Intended for cross-contract use by `slate-escrow` before settlement:
     /// checks channel is open, `public_signals[0]` matches `channel_id`, and
     /// indices 1 and 5–12 match the stored record.
-    pub fn validate_for_settlement(env: Env, channel_id: U256, public_signals: Vec<U256>) {
+    pub fn validate_for_settlement(
+        env: Env,
+        channel_id: U256,
+        public_signals: Vec<U256>,
+    ) -> Result<(), Error> {
         if public_signals.len() != N_PUBLIC {
-            panic!("Wrong public input length");
+            return Err(Error::WrongPublicInputLength);
         }
 
         let signal_channel_id = public_signals
             .get(IDX_CHANNEL_ID)
-            .expect("Missing channel_id in public signals");
+            .ok_or(Error::MissingPublicSignal)?;
         if signal_channel_id != channel_id {
-            panic!("channel_id does not match proof public inputs");
+            return Err(Error::ChannelIdMismatch);
         }
 
-        let entry = load_channel(&env, &channel_id);
+        let entry = load_channel(&env, &channel_id)?;
         if entry.status != ChannelStatus::Open {
-            panic!("Channel is not open");
+            return Err(Error::ChannelNotOpen);
         }
 
         let record = &entry.record;
 
         let signal_rate_commitment = public_signals
             .get(IDX_RATE_COMMITMENT)
-            .expect("Missing rate_commitment in public signals");
+            .ok_or(Error::MissingPublicSignal)?;
         if signal_rate_commitment != record.rate_commitment {
-            panic!("rate_commitment does not match registered channel");
+            return Err(Error::RateCommitmentMismatch);
         }
 
         let signal_pubkey_x = public_signals
             .get(IDX_CONSUMER_PUBKEY_X)
-            .expect("Missing consumer_pubkey_x in public signals");
+            .ok_or(Error::MissingPublicSignal)?;
         let signal_pubkey_y = public_signals
             .get(IDX_CONSUMER_PUBKEY_Y)
-            .expect("Missing consumer_pubkey_y in public signals");
+            .ok_or(Error::MissingPublicSignal)?;
         if signal_pubkey_x != record.consumer_pubkey_x
             || signal_pubkey_y != record.consumer_pubkey_y
         {
-            panic!("consumer pubkey does not match registered channel");
+            return Err(Error::ConsumerPubkeyMismatch);
         }
 
-        assert_address_matches_signals(
+        check_address_matches_signals(
             &env,
             &record.depositor,
             &public_signals,
             IDX_DEPOSITOR_HI,
             IDX_DEPOSITOR_LO,
-            "Depositor",
-        );
-        assert_address_matches_signals(
+            AddressRole::Depositor,
+        )?;
+        check_address_matches_signals(
             &env,
             &record.provider,
             &public_signals,
             IDX_PROVIDER_HI,
             IDX_PROVIDER_LO,
-            "Provider",
-        );
-        assert_address_matches_signals(
+            AddressRole::Provider,
+        )?;
+        check_address_matches_signals(
             &env,
             &record.token,
             &public_signals,
             IDX_TOKEN_HI,
             IDX_TOKEN_LO,
-            "Token",
-        );
+            AddressRole::Token,
+        )?;
+
+        Ok(())
     }
 
     /// Mark a channel closed. Only the registered depositor or provider may call.
-    pub fn close_channel(env: Env, channel_id: U256, caller: Address) {
+    pub fn close_channel(env: Env, channel_id: U256, caller: Address) -> Result<(), Error> {
         caller.require_auth();
 
         let key = DataKey::Channel(channel_id.clone());
@@ -231,18 +268,19 @@ impl SlateAgentRegistry {
             .storage()
             .persistent()
             .get(&key)
-            .unwrap_or_else(|| panic!("Channel not found"));
+            .ok_or(Error::ChannelNotFound)?;
 
         if entry.status == ChannelStatus::Closed {
-            panic!("Channel is already closed");
+            return Err(Error::ChannelAlreadyClosed);
         }
 
         if caller != entry.record.depositor && caller != entry.record.provider {
-            panic!("Only depositor or provider may close channel");
+            return Err(Error::UnauthorizedCloser);
         }
 
         entry.status = ChannelStatus::Closed;
         env.storage().persistent().set(&key, &entry);
+        Ok(())
     }
 }
 
