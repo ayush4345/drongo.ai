@@ -4,6 +4,7 @@ use super::fixture;
 use super::mock_token::{MockToken, MockTokenClient};
 use super::*;
 use meteredverifier::MeteredVerifier;
+use slate_agent_registry::{SlateAgentRegistry, SlateAgentRegistryClient};
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::token::TokenClient;
 use soroban_sdk::{address_payload::AddressPayload, Address, BytesN, Env, U256};
@@ -30,6 +31,7 @@ struct TestContext<'a> {
     env: Env,
     escrow_id: Address,
     client: SlateEscrowClient<'a>,
+    registry_client: SlateAgentRegistryClient<'a>,
     token: Address,
     depositor: Address,
     provider: Address,
@@ -47,14 +49,29 @@ fn proof(env: &Env) -> Proof {
     }
 }
 
+fn register_fixture_channel(ctx: &TestContext) {
+    let public_signals = fixture::public_signals(&ctx.env);
+    ctx.registry_client.register_channel(
+        &public_signals.get(0).unwrap(),
+        &public_signals.get(1).unwrap(),
+        &public_signals.get(5).unwrap(),
+        &public_signals.get(6).unwrap(),
+        &ctx.depositor,
+        &ctx.provider,
+        &ctx.token,
+    );
+}
+
 fn setup() -> TestContext<'static> {
     let env = Env::default();
     env.mock_all_auths();
 
     let verifier_id = env.register(MeteredVerifier, ());
+    let registry_id = env.register(SlateAgentRegistry, ());
     let escrow_id = env.register(SlateEscrow, ());
     let client = SlateEscrowClient::new(&env, &escrow_id);
-    client.init(&verifier_id);
+    let registry_client = SlateAgentRegistryClient::new(&env, &registry_id);
+    client.init(&verifier_id, &registry_id);
 
     let depositor = address_from_fixture(&env, FIXTURE_DEPOSITOR);
     let provider = address_from_fixture(&env, FIXTURE_PROVIDER);
@@ -66,14 +83,17 @@ fn setup() -> TestContext<'static> {
     let mock = MockTokenClient::new(&env, &token);
     mock.mint(&depositor, &DEPOSITOR_MINT);
 
-    TestContext {
+    let ctx = TestContext {
         env,
         escrow_id,
         client,
+        registry_client,
         token,
         depositor,
         provider,
-    }
+    };
+    register_fixture_channel(&ctx);
+    ctx
 }
 
 fn deposit(ctx: &TestContext, amount: i128) {
@@ -85,22 +105,25 @@ fn deposit(ctx: &TestContext, amount: i128) {
 fn init_succeeds() {
     let env = Env::default();
     let verifier_id = env.register(MeteredVerifier, ());
+    let registry_id = env.register(SlateAgentRegistry, ());
     let escrow_id = env.register(SlateEscrow, ());
     let client = SlateEscrowClient::new(&env, &escrow_id);
 
-    client.init(&verifier_id);
+    client.init(&verifier_id, &registry_id);
     assert_eq!(client.get_verifier(), verifier_id);
+    assert_eq!(client.get_registry(), registry_id);
 }
 
 #[test]
 fn init_twice_panics() {
     let env = Env::default();
     let verifier_id = env.register(MeteredVerifier, ());
+    let registry_id = env.register(SlateAgentRegistry, ());
     let escrow_id = env.register(SlateEscrow, ());
     let client = SlateEscrowClient::new(&env, &escrow_id);
 
-    client.init(&verifier_id);
-    assert!(client.try_init(&verifier_id).is_err());
+    client.init(&verifier_id, &registry_id);
+    assert!(client.try_init(&verifier_id, &registry_id).is_err());
 }
 
 #[test]
@@ -198,9 +221,10 @@ fn add_to_depositors_rejects_negative_amount() {
 fn add_to_depositors_requires_auth() {
     let env = Env::default();
     let verifier_id = env.register(MeteredVerifier, ());
+    let registry_id = env.register(SlateAgentRegistry, ());
     let escrow_id = env.register(SlateEscrow, ());
     let client = SlateEscrowClient::new(&env, &escrow_id);
-    client.init(&verifier_id);
+    client.init(&verifier_id, &registry_id);
 
     let token = address_from_fixture(&env, FIXTURE_TOKEN);
     MockToken::register(&env, &token);
@@ -344,12 +368,61 @@ fn refund_returns_full_balance_to_depositor() {
 }
 
 #[test]
+fn settle_rejects_unregistered_channel() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let verifier_id = env.register(MeteredVerifier, ());
+    let registry_id = env.register(SlateAgentRegistry, ());
+    let escrow_id = env.register(SlateEscrow, ());
+    let client = SlateEscrowClient::new(&env, &escrow_id);
+    client.init(&verifier_id, &registry_id);
+
+    let depositor = address_from_fixture(&env, FIXTURE_DEPOSITOR);
+    let provider = address_from_fixture(&env, FIXTURE_PROVIDER);
+    let token = address_from_fixture(&env, FIXTURE_TOKEN);
+    MockToken::register(&env, &token);
+    client.whitelist_token(&token);
+    MockTokenClient::new(&env, &token).mint(&depositor, &DEPOSITOR_MINT);
+    client.add_to_depositors(&depositor, &ESCROW_AMOUNT, &token);
+
+    let result = client.try_settle(
+        &proof(&env),
+        &fixture::public_signals(&env),
+        &depositor,
+        &provider,
+        &token,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
+fn settle_rejects_closed_channel() {
+    let ctx = setup();
+    deposit(&ctx, ESCROW_AMOUNT);
+
+    let channel_id = fixture::public_signals(&ctx.env).get(0).unwrap();
+    ctx.registry_client
+        .close_channel(&channel_id, &ctx.depositor);
+
+    let result = ctx.client.try_settle(
+        &proof(&ctx.env),
+        &fixture::public_signals(&ctx.env),
+        &ctx.depositor,
+        &ctx.provider,
+        &ctx.token,
+    );
+    assert!(result.is_err());
+}
+
+#[test]
 fn refund_requires_auth() {
     let env = Env::default();
     let verifier_id = env.register(MeteredVerifier, ());
+    let registry_id = env.register(SlateAgentRegistry, ());
     let escrow_id = env.register(SlateEscrow, ());
     let client = SlateEscrowClient::new(&env, &escrow_id);
-    client.init(&verifier_id);
+    client.init(&verifier_id, &registry_id);
 
     let token = address_from_fixture(&env, FIXTURE_TOKEN);
     MockToken::register(&env, &token);

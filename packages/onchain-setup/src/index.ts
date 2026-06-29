@@ -7,6 +7,7 @@ export {
 
 export {
   escrowGetBalance,
+  escrowGetRegistry,
   escrowGetVerifier,
   registryGetChannel,
   registryHasChannel,
@@ -19,5 +20,11 @@ export {
 export { SorobanSimulationError } from "./internal.js";
 
 export { Client as MeteredVerifierClient } from "./bindings/meteredverifier/src/index.js";
-export { Client as SlateEscrowClient } from "./bindings/slate-escrow/src/index.js";
-export { Client as SlateAgentRegistryClient } from "./bindings/slate-agent-registry/src/index.js";
+export {
+  Client as SlateEscrowClient,
+  Errors as SlateEscrowErrors,
+} from "./bindings/slate-escrow/src/index.js";
+export {
+  Client as SlateAgentRegistryClient,
+  Errors as SlateAgentRegistryErrors,
+} from "./bindings/slate-agent-registry/src/index.js";

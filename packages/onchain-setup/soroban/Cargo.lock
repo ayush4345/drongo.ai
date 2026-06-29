@@ -1340,6 +1340,7 @@ name = "slate-escrow"
 version = "0.0.0"
 dependencies = [
  "meteredverifier",
+ "slate-agent-registry",
  "soroban-sdk",
 ]
 
