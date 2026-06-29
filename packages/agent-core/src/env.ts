@@ -1,9 +1,9 @@
-import { Keypair, Address } from "@stellar/stellar-sdk";
+import { Keypair, Address, Asset } from "@stellar/stellar-sdk";
 import { sorobanConfigFromEnv, assertSorobanConfig } from "@drongo/onchain-setup";
 import { SorobanChainClient } from "./chain.js";
 import type { ChainClient } from "./chain.js";
 
-/** Stellar testnet USDC SEP-41 contract (the default settlement asset). */
+/** Stellar testnet USDC SEP-41 contract — an alternative settlement asset. */
 export const USDC_TESTNET_CONTRACT_ID =
   "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA";
 
@@ -14,6 +14,8 @@ export interface RealChainSetup {
   depositorPayload: Uint8Array;
   providerPayload: Uint8Array;
   tokenPayload: Uint8Array;
+  /** The settlement token contract id (C…) being used. */
+  tokenId: string;
   /** Human-readable summary of the bound addresses, for logging. */
   label: string;
 }
@@ -31,12 +33,19 @@ function strkeyToPayload(strkey: string): Uint8Array {
  * Setting `DEPOSITOR_SECRET` is the "go real" signal; the deployed contract IDs
  * are then required (an absent one throws a clear error via `assertSorobanConfig`).
  *
+ * The settlement token defaults to **native XLM** (its Stellar Asset Contract,
+ * derived per-network) — the escrow speaks the SEP-41 token interface, and the
+ * native SAC implements it, so no trustline is needed and friendbot-funded
+ * accounts work out of the box. Point it at USDC (or any SEP-41 SAC) via
+ * `SETTLEMENT_TOKEN_ID`. NOTE: whichever token you use must be whitelisted in
+ * the escrow (`whitelist_token`).
+ *
  * Env:
  *  - `DEPOSITOR_SECRET`        Stellar secret (S…) that funds escrow + signs txs.
  *  - `STELLAR_SLATE_ESCROW_ID`, `STELLAR_SLATE_AGENT_REGISTRY_ID`,
  *    `STELLAR_METERED_VERIFIER_ID`  deployed contract IDs (read by sorobanConfigFromEnv).
  *  - `PROVIDER_PUBLIC`         provider account (G…); defaults to the depositor.
- *  - `USDC_TOKEN_ID`          SEP-41 token (C…); defaults to testnet USDC.
+ *  - `SETTLEMENT_TOKEN_ID`    SEP-41 token contract (C…); defaults to native XLM's SAC.
  *  - `SOROBAN_RPC_URL`, `SOROBAN_NETWORK_PASSPHRASE`  optional RPC overrides.
  */
 export function realChainFromEnv(env: NodeJS.ProcessEnv = process.env): RealChainSetup | null {
@@ -52,7 +61,13 @@ export function realChainFromEnv(env: NodeJS.ProcessEnv = process.env): RealChai
   const depositorKeypair = Keypair.fromSecret(secret);
   const depositorPublic = depositorKeypair.publicKey();
   const providerPublic = env.PROVIDER_PUBLIC ?? depositorPublic;
-  const tokenId = env.USDC_TOKEN_ID ?? USDC_TESTNET_CONTRACT_ID;
+
+  // Default settlement asset: native XLM, via its Stellar Asset Contract for the
+  // configured network. Override with SETTLEMENT_TOKEN_ID (e.g. the USDC SAC).
+  const tokenId =
+    env.SETTLEMENT_TOKEN_ID ??
+    env.USDC_TOKEN_ID ??
+    Asset.native().contractId(config.networkPassphrase);
 
   const chain = new SorobanChainClient({
     config,
@@ -65,6 +80,7 @@ export function realChainFromEnv(env: NodeJS.ProcessEnv = process.env): RealChai
     depositorPayload: strkeyToPayload(depositorPublic),
     providerPayload: strkeyToPayload(providerPublic),
     tokenPayload: strkeyToPayload(tokenId),
+    tokenId,
     label: `depositor=${depositorPublic.slice(0, 6)}… provider=${providerPublic.slice(0, 6)}… token=${tokenId.slice(0, 6)}…`,
   };
 }

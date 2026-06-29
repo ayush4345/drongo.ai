@@ -4,8 +4,8 @@ import {
   ServiceChannel,
   MockChainClient,
   realChainFromEnv,
-  parseUsdToMicros,
-  formatMicros,
+  parseUnits,
+  formatUnits,
 } from "@drongo/agent-core";
 import type { ChainClient, ChannelTerms } from "@drongo/agent-core";
 import { WeatherService, FetchHttpClient } from "@drongo/agent-provider";
@@ -21,8 +21,11 @@ function randField(): bigint {
 async function main(): Promise<void> {
   const goal = process.argv.slice(2).join(" ") || "Which is warmest right now: Tokyo, London, or Cairo?";
 
-  const rate = parseUsdToMicros(process.env.RATE_USDC ?? "0.002"); // PRIVATE per-call rate
-  const escrow = parseUsdToMicros(process.env.ESCROW_USDC ?? "0.1"); // public escrow ceiling
+  // Amounts are in the settlement token's base units (Stellar = 7 decimals,
+  // stroops). Default settlement asset is native XLM (see realChainFromEnv).
+  const symbol = process.env.SETTLEMENT_TOKEN_SYMBOL ?? "XLM";
+  const rate = parseUnits(process.env.RATE ?? "0.0001"); // PRIVATE per-call rate
+  const escrow = parseUnits(process.env.ESCROW ?? "0.01"); // public escrow ceiling
 
   // Real Stellar settlement when DEPOSITOR_SECRET + contract IDs are configured;
   // otherwise an in-memory mock so the demo always runs offline.
@@ -54,9 +57,12 @@ async function main(): Promise<void> {
   const rateCommitment = await computeRateCommitment(rate, terms.rateBlind);
   console.log("═══ OPEN CHANNEL ═══");
   console.log(`  settlement chain:  ${mode}`);
-  if (real) console.log(`  addresses:         ${real.label}`);
-  console.log(`  rate (PRIVATE):    ${formatMicros(rate)} USDC / call`);
-  console.log(`  escrow (public):   ${formatMicros(escrow)} USDC`);
+  if (real) {
+    console.log(`  settlement token:  ${symbol}  (${real.tokenId})`);
+    console.log(`  addresses:         ${real.label}`);
+  }
+  console.log(`  rate (PRIVATE):    ${formatUnits(rate)} ${symbol} / call`);
+  console.log(`  escrow (public):   ${formatUnits(escrow)} ${symbol}`);
   console.log(`  rate commitment:   ${rateCommitment.toString().slice(0, 16)}…  (Poseidon(rate, blind))`);
 
   const opened = await chain.openChannel({
@@ -94,10 +100,10 @@ async function main(): Promise<void> {
     token: tokenPayload,
   });
 
-  const settlementMicros = settlement.serialized.publicSignals[3] ?? 0n;
+  const settledUnits = settlement.serialized.publicSignals[3] ?? 0n;
   console.log(`  calls served (PRIVATE):  ${served}`);
-  console.log(`  settled to provider:     ${formatMicros(settlementMicros)} USDC`);
-  console.log(`  refunded to consumer:    ${formatMicros(escrow - settlementMicros)} USDC`);
+  console.log(`  settled to provider:     ${formatUnits(settledUnits)} ${symbol}`);
+  console.log(`  refunded to consumer:    ${formatUnits(escrow - settledUnits)} ${symbol}`);
   console.log(`  proof bytes:             a=${settlement.serialized.proof.a.length} b=${settlement.serialized.proof.b.length} c=${settlement.serialized.proof.c.length}`);
   console.log(`  public signals:          ${settlement.serialized.publicSignals.length} (13-signal layout)`);
   console.log(`  settle tx:               ${settled.settleTx}`);
