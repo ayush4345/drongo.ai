@@ -15,6 +15,7 @@ import type {
   SettlementProof,
   Voucher,
 } from "@drongo/proving-setup";
+import type { MeterDb } from "./db.js";
 import type { Service } from "./service.js";
 
 /** Why a provider refused (or could not accept) a metering voucher. */
@@ -63,6 +64,13 @@ export interface SettlementResult {
   inputs: SettlementCircuitInputs;
   proof: SettlementProof;
   serialized: SerializedSettlement;
+}
+
+export interface ServiceChannelOptions {
+  meterDb?: MeterDb;
+  rateCommitment?: bigint;
+  openTx?: string;
+  serviceName?: string;
 }
 
 /** Shared surface for in-process and (future) x402-backed metered clients. */
@@ -157,6 +165,7 @@ export class ServiceChannel<Req, Res> implements MeteredServiceChannel<Req, Res>
   readonly #consumer: ConsumerMeter;
   readonly #provider: ProviderMeter;
   readonly #service: Service<Req, Res>;
+  readonly #meterDb: MeterDb | undefined;
 
   private constructor(
     terms: ChannelTerms,
@@ -164,23 +173,35 @@ export class ServiceChannel<Req, Res> implements MeteredServiceChannel<Req, Res>
     consumer: ConsumerMeter,
     provider: ProviderMeter,
     consumerPublicKey: ConsumerPublicKey,
+    meterDb: MeterDb | undefined,
   ) {
     this.terms = terms;
     this.#service = service;
     this.#consumer = consumer;
     this.#provider = provider;
     this.consumerPublicKey = consumerPublicKey;
+    this.#meterDb = meterDb;
   }
 
   /** Derive the consumer key and stand up both meters for the channel. */
   static async open<Req, Res>(
     terms: ChannelTerms,
     service: Service<Req, Res>,
+    options: ServiceChannelOptions = {},
   ): Promise<ServiceChannel<Req, Res>> {
     const consumerPublicKey = await deriveConsumerPublicKey(terms.consumerPrivateKey);
     const consumer = new ConsumerMeter(terms.consumerPrivateKey, terms.channelId);
     const provider = new ProviderMeter(terms.channelId, consumerPublicKey, terms.rate, terms.escrow);
-    return new ServiceChannel(terms, service, consumer, provider, consumerPublicKey);
+    options.meterDb?.saveChannel({
+      terms,
+      consumerPublicKey,
+      rateCommitment: options.rateCommitment,
+      lastAcceptedUnits: 0n,
+      halted: false,
+      openTx: options.openTx,
+      serviceName: options.serviceName ?? service.name,
+    });
+    return new ServiceChannel(terms, service, consumer, provider, consumerPublicKey, options.meterDb);
   }
 
   /** One full round-trip: consumer pays, provider verifies + serves (or refuses). */
@@ -192,6 +213,16 @@ export class ServiceChannel<Req, Res> implements MeteredServiceChannel<Req, Res>
     const res = await this.#provider.receive(voucher);
 
     if (!res.accepted) {
+      if (res.reason === "ceiling-exceeded") {
+        const latest = this.#provider.latestVoucher;
+        this.#meterDb?.updateMeter(
+          this.terms.channelId,
+          latest?.totalUnits ?? 0n,
+          latest,
+          true,
+          "ceiling_reached",
+        );
+      }
       return {
         served: false,
         request: req,
@@ -202,6 +233,14 @@ export class ServiceChannel<Req, Res> implements MeteredServiceChannel<Req, Res>
         billable: res.billable,
       };
     }
+
+    this.#meterDb?.updateMeter(
+      this.terms.channelId,
+      res.cumulativeUnits ?? voucher.totalUnits,
+      voucher,
+      false,
+      "voucher_accepted",
+    );
 
     return {
       served: true,
