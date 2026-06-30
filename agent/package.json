@@ -1,0 +1,30 @@
+{
+  "name": "@drongo/agent",
+  "version": "0.1.0",
+  "description": "Drongo AI agent harness — consumer/provider agents, EdDSA-BabyJubjub voucher metering, and ZK witness export for confidential pay-per-use settlement on Stellar.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "demo": "tsx src/demo.ts",
+    "demo:service": "tsx src/service-demo.ts",
+    "demo:weather": "tsx src/weather-demo.ts",
+    "test": "node --import tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "circomlibjs": "^0.1.7",
+    "openai": "^4.57.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["blake-hash"]
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.0"
+  }
+}
