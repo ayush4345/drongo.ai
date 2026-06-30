@@ -50,9 +50,25 @@ export interface SettleArgs {
   token: AddressPayload;
 }
 
+export interface OpenChannelTxHashes {
+  registerTx: string;
+  depositTx: string;
+}
+
+export interface OpenChannelResult {
+  channelId: string;
+  /** Comma-separated `registerTx,depositTx` (legacy convenience). */
+  openTx: string;
+  txs: OpenChannelTxHashes;
+}
+
+export interface SettleResult {
+  settleTx: string;
+}
+
 export interface ChainClient {
-  openChannel(args: OpenChannelArgs): Promise<{ channelId: string; openTx: string }>;
-  settle(args: SettleArgs): Promise<{ settleTx: string }>;
+  openChannel(args: OpenChannelArgs): Promise<OpenChannelResult>;
+  settle(args: SettleArgs): Promise<SettleResult>;
 }
 
 /** Whether a 32-byte address payload is an account (G…) or contract (C…). */
@@ -258,14 +274,17 @@ function assertEscrowAmount(amount: bigint): void {
  * end-to-end offline. Swap in {@link SorobanChainClient} for real settlement.
  */
 export class MockChainClient implements ChainClient {
-  async openChannel(args: OpenChannelArgs): Promise<{ channelId: string; openTx: string }> {
+  async openChannel(args: OpenChannelArgs): Promise<OpenChannelResult> {
+    const registerTx = `mock_register_${shortHex(args.channelId)}`;
+    const depositTx = `mock_deposit_${shortHex(args.channelId)}`;
     return {
       channelId: args.channelId.toString(),
-      openTx: `mock_open_${shortHex(args.channelId)}`,
+      openTx: `${registerTx},${depositTx}`,
+      txs: { registerTx, depositTx },
     };
   }
 
-  async settle(args: SettleArgs): Promise<{ settleTx: string }> {
+  async settle(args: SettleArgs): Promise<SettleResult> {
     const nullifier = args.settlement.publicSignals[4] ?? 0n;
     return { settleTx: `mock_settle_${shortHex(nullifier)}` };
   }
@@ -298,7 +317,7 @@ export class SorobanChainClient implements ChainClient {
     };
   }
 
-  async openChannel(args: OpenChannelArgs): Promise<{ channelId: string; openTx: string }> {
+  async openChannel(args: OpenChannelArgs): Promise<OpenChannelResult> {
     assertEscrowAmount(args.escrow);
 
     const depositor = addressPayloadToStellarAddress(args.depositor, this.addressKinds.depositor);
@@ -354,10 +373,11 @@ export class SorobanChainClient implements ChainClient {
     return {
       channelId: args.channelId.toString(),
       openTx: `${registerHash},${depositHash}`,
+      txs: { registerTx: registerHash, depositTx: depositHash },
     };
   }
 
-  async settle(args: SettleArgs): Promise<{ settleTx: string }> {
+  async settle(args: SettleArgs): Promise<SettleResult> {
     const depositor = addressPayloadToStellarAddress(args.depositor, this.addressKinds.depositor);
     const provider = addressPayloadToStellarAddress(args.provider, this.addressKinds.provider);
     const token = addressPayloadToStellarAddress(args.token, this.addressKinds.token);

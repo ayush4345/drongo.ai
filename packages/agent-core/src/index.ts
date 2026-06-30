@@ -8,4 +8,5 @@ export * from "./money.js";
 export * from "./chain.js";
 export * from "./channel.js";
 export * from "./env.js";
+export * from "./explorer.js";
 export * from "./soroban.js";

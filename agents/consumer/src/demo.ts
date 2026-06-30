@@ -9,6 +9,8 @@ import {
   realChainFromEnv,
   parseUnits,
   formatUnits,
+  stellarExplorerContractUrl,
+  stellarExplorerTxUrl,
 } from "@drongo/agent-core";
 import type { ChainClient, ChannelTerms } from "@drongo/agent-core";
 import { WeatherService, FetchHttpClient } from "@drongo/agent-provider";
@@ -35,6 +37,18 @@ if (envLoad.error) {
 /** A random BN254 field element (31 random bytes stays below the prime). */
 function randField(): bigint {
   return BigInt("0x" + randomBytes(31).toString("hex"));
+}
+
+function logTx(label: string, hash: string, networkPassphrase?: string): void {
+  console.log(`  ${label.padEnd(22)} ${hash}`);
+  if (!networkPassphrase) return;
+  const url = stellarExplorerTxUrl(hash, networkPassphrase);
+  if (url) console.log(`  ${"".padEnd(22)} ${url}`);
+}
+
+function logExplorerLink(label: string, url: string | undefined): void {
+  if (!url) return;
+  console.log(`  ${label.padEnd(22)} ${url}`);
 }
 
 async function main(): Promise<void> {
@@ -82,6 +96,8 @@ async function main(): Promise<void> {
   if (real) {
     console.log(`  settlement token:  ${symbol}  (${real.tokenId})`);
     console.log(`  addresses:         ${real.label}`);
+    logExplorerLink("escrow contract", stellarExplorerContractUrl(real.contracts.escrow, real.networkPassphrase));
+    logExplorerLink("registry contract", stellarExplorerContractUrl(real.contracts.registry, real.networkPassphrase));
   }
   console.log(`  rate (PRIVATE):    ${formatUnits(rate)} ${symbol} / call`);
   console.log(`  escrow (public):   ${formatUnits(escrow)} ${symbol}`);
@@ -96,7 +112,8 @@ async function main(): Promise<void> {
     token: tokenPayload,
     escrow,
   });
-  console.log(`  open tx:           ${opened.openTx}`);
+  logTx("register_channel tx", opened.txs.registerTx, real?.networkPassphrase);
+  logTx("add_to_depositors tx", opened.txs.depositTx, real?.networkPassphrase);
 
   // ── METER (off-chain, per call) ───────────────────────────────────────
   const useOpenAi = Boolean(process.env.OPENAI_API_KEY);
@@ -130,9 +147,14 @@ async function main(): Promise<void> {
   console.log(`  refunded to consumer:    ${formatUnits(escrow - settledUnits)} ${symbol}`);
   console.log(`  proof bytes:             a=${settlement.serialized.proof.a.length} b=${settlement.serialized.proof.b.length} c=${settlement.serialized.proof.c.length}`);
   console.log(`  public signals:          ${settlement.serialized.publicSignals.length} (13-signal layout)`);
-  console.log(`  settle tx:               ${settled.settleTx}`);
+  logTx("settle tx", settled.settleTx, real?.networkPassphrase);
+
   if (real) {
-    console.log(`\n  view on explorer: https://stellar.expert/explorer/testnet/tx/${settled.settleTx}`);
+    console.log("\n═══ EXPLORER ═══");
+    logExplorerLink("register_channel", stellarExplorerTxUrl(opened.txs.registerTx, real.networkPassphrase));
+    logExplorerLink("add_to_depositors", stellarExplorerTxUrl(opened.txs.depositTx, real.networkPassphrase));
+    logExplorerLink("settle", stellarExplorerTxUrl(settled.settleTx, real.networkPassphrase));
+    logExplorerLink("escrow contract", stellarExplorerContractUrl(real.contracts.escrow, real.networkPassphrase));
   }
 }
 

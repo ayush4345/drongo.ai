@@ -18,6 +18,14 @@ export interface RealChainSetup {
   tokenId: string;
   /** Human-readable summary of the bound addresses, for logging. */
   label: string;
+  /** Network passphrase — used to build StellarExpert links. */
+  networkPassphrase: string;
+  /** Deployed contract IDs from the environment. */
+  contracts: {
+    escrow: string;
+    registry: string;
+    verifier: string;
+  };
 }
 
 /** Strkey (G…/C…) → its raw 32-byte payload (the form the proof binds). */
@@ -82,5 +90,11 @@ export function realChainFromEnv(env: NodeJS.ProcessEnv = process.env): RealChai
     tokenPayload: strkeyToPayload(tokenId),
     tokenId,
     label: `depositor=${depositorPublic.slice(0, 6)}… provider=${providerPublic.slice(0, 6)}… token=${tokenId.slice(0, 6)}…`,
+    networkPassphrase: config.networkPassphrase,
+    contracts: {
+      escrow: config.slateEscrowId,
+      registry: config.slateAgentRegistryId,
+      verifier: config.meteredVerifierId,
+    },
   };
 }
