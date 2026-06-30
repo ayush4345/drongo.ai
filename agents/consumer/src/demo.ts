@@ -9,6 +9,7 @@ import {
   realChainFromEnv,
   parseUnits,
   formatUnits,
+  MeterDb,
 } from "@drongo/agent-core";
 import type { ChainClient, ChannelTerms } from "@drongo/agent-core";
 import { WeatherService, FetchHttpClient } from "@drongo/agent-provider";
@@ -73,10 +74,14 @@ async function main(): Promise<void> {
     tokenPayload,
   };
 
-  const channel = await ServiceChannel.open(terms, new WeatherService(new FetchHttpClient(), 1n));
+  const rateCommitment = await computeRateCommitment(rate, terms.rateBlind);
+  const meterDb = new MeterDb(process.env.METER_DB_PATH ?? "artifacts/metering.db");
+  const channel = await ServiceChannel.open(terms, new WeatherService(new FetchHttpClient(), 1n), {
+    meterDb,
+    rateCommitment,
+  });
 
   // ── OPEN ──────────────────────────────────────────────────────────────
-  const rateCommitment = await computeRateCommitment(rate, terms.rateBlind);
   console.log("═══ OPEN CHANNEL ═══");
   console.log(`  settlement chain:  ${mode}`);
   if (real) {
@@ -96,6 +101,7 @@ async function main(): Promise<void> {
     token: tokenPayload,
     escrow,
   });
+  meterDb.updateOpenTx(terms.channelId, opened.openTx);
   console.log(`  open tx:           ${opened.openTx}`);
 
   // ── METER (off-chain, per call) ───────────────────────────────────────
@@ -132,6 +138,7 @@ async function main(): Promise<void> {
   if (real) {
     console.log(`\n  view on explorer: https://stellar.expert/explorer/testnet/tx/${settled.settleTx}`);
   }
+  meterDb.close();
 }
 
 main().catch((error) => {
