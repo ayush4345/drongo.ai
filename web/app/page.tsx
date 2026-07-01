@@ -6,10 +6,7 @@ export default function ChatPage() {
       <section className="chat-panel" aria-label="Chat conversation">
         <header className="chat-header">
           <div className="chat-title">
-            <div>
-              <p className="eyebrow">Chatbot</p>
-              <h1>New chat</h1>
-            </div>
+            <span className="eyebrow">Chatbot</span>
           </div>
           <span className="status">Ready</span>
         </header>

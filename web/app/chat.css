@@ -31,6 +31,7 @@ body:has(.chat-shell) {
   min-width: 0;
   height: 100%;
   overflow: hidden;
+  padding: 0;
   border: 1px solid rgba(34, 34, 30, 0.08);
   border-radius: 18px;
   background: rgba(255, 255, 253, 0.96);
@@ -54,7 +55,8 @@ body:has(.chat-shell) {
   justify-content: space-between;
   gap: 10px;
   flex: none;
-  padding: 10px 16px;
+  min-height: 40px;
+  padding: 8px 16px;
   border-bottom: 1px solid rgba(34, 34, 30, 0.08);
   background: rgba(255, 255, 253, 0.7);
 }
@@ -62,36 +64,41 @@ body:has(.chat-shell) {
 .chat-title {
   display: flex;
   align-items: center;
+  gap: 8px;
   min-width: 0;
 }
 
 .eyebrow {
-  margin: 0 0 2px;
+  margin: 0;
   color: #7b7b73;
+  font-family: var(--sans), system-ui, sans-serif;
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   line-height: 1;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
-.chat-header h1 {
+.chat-heading {
   margin: 0;
   color: #20201d;
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-family: var(--sans), system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
   line-height: 1;
+  white-space: nowrap;
 }
 
 .status {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   flex: none;
   border: 1px solid #d8ebe3;
   border-radius: 999px;
-  padding: 4px 9px;
+  padding: 3px 8px;
   color: #245f51;
   background: rgba(245, 255, 251, 0.9);
   font-size: 11px;
@@ -101,8 +108,8 @@ body:has(.chat-shell) {
 
 .status::before {
   content: "";
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: #34c49f;
   box-shadow: 0 0 0 3px rgba(52, 196, 159, 0.15);
@@ -248,15 +255,16 @@ body:has(.chat-shell) {
   }
 
   .chat-header {
-    padding: 8px 12px;
+    min-height: 36px;
+    padding: 7px 12px;
   }
 
-  .chat-header h1 {
-    font-size: 14px;
+  .chat-heading {
+    font-size: 12px;
   }
 
   .status {
-    padding: 3px 8px;
+    padding: 3px 7px;
     font-size: 10px;
   }
 
