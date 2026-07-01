@@ -6,3 +6,4 @@
 export * from "./http.js";
 export * from "./weather.js";
 export * from "./crypto.js";
+export * from "./translation.js";
