@@ -7,6 +7,7 @@ export * from "./service.js";
 export * from "./money.js";
 export * from "./chain.js";
 export * from "./channel.js";
+export * from "./toolbox.js";
 export * from "./db.js";
 export * from "./env.js";
 export * from "./soroban.js";
