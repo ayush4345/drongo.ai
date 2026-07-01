@@ -4,7 +4,7 @@
   max-height: 100dvh;
   overflow: hidden;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 160px;
+  grid-template-columns: minmax(0, 1fr) 280px;
   grid-template-rows: minmax(0, 1fr);
   gap: 12px;
   padding: 16px;
@@ -235,7 +235,7 @@ body:has(.chat-shell) {
 
 @media (max-width: 900px) {
   .chat-shell {
-    grid-template-columns: minmax(0, 1fr) 120px;
+    grid-template-columns: minmax(0, 1fr) 160px;
     padding: 14px;
     gap: 10px;
   }
