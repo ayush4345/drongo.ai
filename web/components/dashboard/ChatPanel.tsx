@@ -1,88 +1,80 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
+import {
+  type AgentStep,
+  type AgentTurn,
+  type ChatResponse,
+  type ProviderInfo,
+  formatAgentAnswer,
+  formatToolAnswer,
+  uid,
+} from "./chat-types";
+
+function buildFallbackSteps(
+  provider: ProviderInfo,
+  calls: NonNullable<ChatResponse["calls"]>,
+  answer: string,
+): AgentStep[] {
+  const SERVICE_LABELS: Record<string, string> = {
+    get_weather: "Weather",
+    get_crypto_price: "Crypto price",
+    translate_text: "Translation",
+  };
+
+  const steps: AgentStep[] = [
+    {
+      kind: "provider",
+      label: "Connected to provider",
+      detail: `${provider.name} · ${provider.url}`,
+    },
+  ];
+
+  for (const [index, call] of calls.entries()) {
+    const service = SERVICE_LABELS[call.tool] ?? call.tool;
+    steps.push({
+      kind: "tool_call",
+      label: `Call ${index + 1}: ${service}`,
+      tool: call.tool,
+      service,
+      args: call.args,
+      served: call.served,
+      summary: call.served ? formatToolAnswer(call.tool, call.result) : undefined,
+      reason: call.reason,
+      detail: call.served
+        ? formatToolAnswer(call.tool, call.result)
+        : (call.reason ?? "not served"),
+    });
+  }
+
+  steps.push({ kind: "answer", label: "Final answer", detail: answer });
+  return steps;
+}
 
 type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
-  calls?: Array<{
-    tool: string;
-    served: boolean;
-    result?: unknown;
-    reason?: string;
-  }>;
 };
 
-type ChatResponse = {
-  ok: boolean;
-  answer?: string;
-  calls?: ChatMessage["calls"];
-  error?: string;
+type Props = {
+  onTurnStart: (turn: AgentTurn) => void;
+  onTurnComplete: (turn: AgentTurn) => void;
 };
 
-function uid(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+function resizeTextarea(el: HTMLTextAreaElement) {
+  el.style.height = "auto";
+  el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
 }
 
-function formatToolCallSummary(
-  tool: string,
-  result: unknown,
-): string {
-  if (result === null || typeof result !== "object") return String(result);
-  const r = result as Record<string, unknown>;
-
-  if (tool === "get_weather") {
-    return `${r.location}: ${r.temperatureC}°C, ${r.summary ?? "—"}`;
-  }
-  if (tool === "get_crypto_price") {
-    return `${r.coin ?? r.id}: ${r.price ?? r.usd}`;
-  }
-  if (tool === "translate_text") {
-    return String(r.translatedText ?? r.text ?? "—");
-  }
-  return JSON.stringify(result);
-}
-
-function formatToolAnswer(tool: string, result: unknown): string {
-  if (result === null || typeof result !== "object") return String(result);
-  const r = result as Record<string, unknown>;
-
-  if (tool === "get_weather") {
-    const location = r.location ?? "Unknown";
-    const temp = r.temperatureC;
-    const summary = r.summary ?? "unknown conditions";
-    const wind = r.windKph;
-    return `Weather in ${location}: ${temp}°C, ${summary}${wind !== undefined ? `, wind ${wind} km/h` : ""}.`;
-  }
-  if (tool === "get_crypto_price") {
-    const coin = r.coin ?? r.id ?? "asset";
-    const price = r.price ?? r.usd;
-    const change = r.change24h ?? r.change_24h;
-    const suffix = change !== undefined ? ` (${Number(change) >= 0 ? "+" : ""}${change}% 24h)` : "";
-    return `${coin} price: ${price}${suffix}.`;
-  }
-  if (tool === "translate_text") {
-    return `Translation: ${r.translatedText ?? r.text ?? "—"}`;
-  }
-  return JSON.stringify(result);
-}
-
-function formatAgentAnswer(answer: string, calls?: ChatMessage["calls"]): string {
-  const served = calls?.filter((c) => c.served && c.result !== undefined) ?? [];
-  if (served.length > 0) {
-    return served.map((c) => formatToolAnswer(c.tool, c.result)).join("\n\n");
-  }
-  return answer;
-}
-
-export default function ChatPanel() {
+export default function ChatPanel({ onTurnStart, onTurnComplete }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState("");
   const [status, setStatus] = useState<"ready" | "loading" | "error">("ready");
   const [statusNote, setStatusNote] = useState("Ready");
   const [agentOnline, setAgentOnline] = useState<boolean | null>(null);
+  const [inputKey, setInputKey] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const sendingRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -104,14 +96,33 @@ export default function ChatPanel() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, status]);
 
-  async function sendMessage(text: string) {
-    const trimmed = text.trim();
-    if (!trimmed || status === "loading") return;
+  function readInput(): string {
+    return textareaRef.current?.value ?? "";
+  }
 
+  function clearInput() {
+    setInputKey((k) => k + 1);
+  }
+
+  async function sendMessage() {
+    const trimmed = readInput().trim();
+    if (!trimmed || sendingRef.current || status === "loading") return;
+
+    sendingRef.current = true;
+    const turnId = uid();
     setMessages((prev) => [...prev, { id: uid(), role: "user", content: trimmed }]);
-    setInput("");
+    clearInput();
     setStatus("loading");
     setStatusNote("Thinking…");
+
+    onTurnStart({
+      id: turnId,
+      userMessage: trimmed,
+      answer: "",
+      provider: { name: "drongo-provider", url: "…" },
+      steps: [],
+      loading: true,
+    });
 
     try {
       const res = await fetch("/api/chat", {
@@ -121,19 +132,27 @@ export default function ChatPanel() {
       });
       const data = (await res.json()) as ChatResponse;
 
-      if (!res.ok || !data.ok || !data.answer) {
+      if (!res.ok || !data.ok) {
         throw new Error(data.error ?? `Request failed (${res.status})`);
       }
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: uid(),
-          role: "assistant",
-          content: formatAgentAnswer(data.answer!, data.calls),
-          calls: data.calls,
-        },
-      ]);
+      const answer = formatAgentAnswer(data.answer ?? "", data.calls);
+      if (!answer) {
+        throw new Error("Agent returned an empty response");
+      }
+
+      const provider = data.provider ?? { name: "drongo-provider", url: "http://localhost:4021" };
+      const steps = data.steps ?? buildFallbackSteps(provider, data.calls ?? [], answer);
+
+      setMessages((prev) => [...prev, { id: uid(), role: "assistant", content: answer }]);
+      onTurnComplete({
+        id: turnId,
+        userMessage: trimmed,
+        answer,
+        provider,
+        steps,
+        loading: false,
+      });
       setStatus("ready");
       setStatusNote("Ready");
       setAgentOnline(true);
@@ -145,26 +164,36 @@ export default function ChatPanel() {
         ...prev,
         { id: uid(), role: "assistant", content: `Could not reach the agent: ${msg}` },
       ]);
+      onTurnComplete({
+        id: turnId,
+        userMessage: trimmed,
+        answer: msg,
+        provider: { name: "—", url: "—" },
+        steps: [{ kind: "answer", label: "Error", detail: msg }],
+        loading: false,
+      });
       setAgentOnline(false);
+    } finally {
+      sendingRef.current = false;
     }
   }
 
-  function onSubmit(e: FormEvent) {
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    void sendMessage(input);
+    void sendMessage();
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      void sendMessage(input);
+      void sendMessage();
     }
   }
 
   const empty = messages.length === 0;
 
   return (
-    <>
+    <div className="chat-panel-layout">
       <header className="chat-header">
         <div className="chat-title">
           <span className="eyebrow">Chatbot</span>
@@ -193,23 +222,6 @@ export default function ChatPanel() {
               <li key={m.id} className={`chat-msg chat-msg-${m.role}`}>
                 <span className="chat-msg-role">{m.role === "user" ? "You" : "Agent"}</span>
                 <p className="chat-msg-text">{m.content}</p>
-                {m.calls && m.calls.length > 0 && (
-                  <ul className="chat-tool-calls">
-                    {m.calls.map((c, i) => (
-                      <li key={i}>
-                        <span className={c.served ? "paid" : "skipped"}>
-                          {c.served ? "paid" : "skipped"}
-                        </span>{" "}
-                        {c.tool}
-                        {c.served && c.result !== undefined
-                          ? ` · ${formatToolCallSummary(c.tool, c.result)}`
-                          : c.reason
-                            ? ` (${c.reason})`
-                            : ""}
-                      </li>
-                    ))}
-                  </ul>
-                )}
               </li>
             ))}
             {status === "loading" && (
@@ -227,21 +239,27 @@ export default function ChatPanel() {
           Ask anything
         </label>
         <textarea
+          key={inputKey}
           id="chat-input"
           ref={textareaRef}
           name="message"
           placeholder="Ask anything"
           autoComplete="off"
           rows={1}
-          value={input}
           disabled={status === "loading"}
-          onChange={(e) => setInput(e.target.value)}
+          onInput={(e) => {
+            resizeTextarea(e.currentTarget);
+            if (status === "error") {
+              setStatus("ready");
+              setStatusNote("Ready");
+            }
+          }}
           onKeyDown={onKeyDown}
         />
-        <button type="submit" aria-label="Send message" disabled={status === "loading" || !input.trim()}>
+        <button type="submit" aria-label="Send message" disabled={status === "loading"}>
           <span aria-hidden="true">↑</span>
         </button>
       </form>
-    </>
+    </div>
   );
 }

@@ -2,6 +2,14 @@ import express from "express";
 import type { Express } from "express";
 import type { AgentSession } from "./session.js";
 import type { ConsumerServerConfig } from "./config.js";
+import { buildAgentSteps } from "./steps.js";
+
+function providerInfo(config: ConsumerServerConfig) {
+  return {
+    name: "drongo-provider",
+    url: config.providerUrl,
+  };
+}
 
 export interface ConsumerServerDeps {
   config: ConsumerServerConfig;
@@ -31,7 +39,8 @@ export function createConsumerServer(deps: ConsumerServerDeps): Express {
   app.get("/health", (_req, res) => {
     res.json({
       ok: session.ready,
-      providerUrl: config.providerUrl,
+      provider: providerInfo(config),
+      tools: ["get_weather", "get_crypto_price", "translate_text"],
       brain: process.env.OPENAI_API_KEY ? "openai" : "stub",
     });
   });
@@ -50,7 +59,9 @@ export function createConsumerServer(deps: ConsumerServerDeps): Express {
 
     try {
       const result = await session.chat(body.message);
-      res.json({ ok: true, ...result });
+      const provider = providerInfo(config);
+      const steps = buildAgentSteps(provider, result.calls, result.answer);
+      res.json({ ok: true, provider, steps, ...result });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       res.status(500).json({ ok: false, error: msg });
