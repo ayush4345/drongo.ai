@@ -1,8 +1,10 @@
 import express from "express";
 import type { Express } from "express";
+import { realChainFromEnv } from "@drongo/agent-core";
 import type { AgentSession } from "./session.js";
 import type { ConsumerServerConfig } from "./config.js";
 import { buildAgentSteps } from "./steps.js";
+import { ALL_TOOLS, TOOL_PROVIDERS } from "./providers.js";
 
 function providerInfo(config: ConsumerServerConfig) {
   return {
@@ -37,11 +39,22 @@ export function createConsumerServer(deps: ConsumerServerDeps): Express {
   });
 
   app.get("/health", (_req, res) => {
+    const real = realChainFromEnv();
     res.json({
       ok: session.ready,
       provider: providerInfo(config),
-      tools: ["get_weather", "get_crypto_price", "translate_text"],
+      tools: ALL_TOOLS,
+      providers: Object.entries(TOOL_PROVIDERS).map(([tool, meta]) => ({
+        tool,
+        id: meta.id,
+        label: meta.label,
+      })),
       brain: process.env.OPENAI_API_KEY ? "openai" : "stub",
+      settlementMode: real ? "stellar" : "mock",
+      settlementNote: real
+        ? "Calls are metered off-chain; one ZK proof settles on-chain when the consumer stops."
+        : "Mock mode — calls are metered but no real on-chain payment without DEPOSITOR_SECRET.",
+      payment: session.getPaymentSummary(),
     });
   });
 
@@ -60,8 +73,9 @@ export function createConsumerServer(deps: ConsumerServerDeps): Express {
     try {
       const result = await session.chat(body.message);
       const provider = providerInfo(config);
-      const steps = buildAgentSteps(provider, result.calls, result.answer);
-      res.json({ ok: true, provider, steps, ...result });
+      const { payment, ...rest } = result;
+      const steps = buildAgentSteps(provider, result.calls, result.answer, payment);
+      res.json({ ok: true, provider, steps, payment, ...rest });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       res.status(500).json({ ok: false, error: msg });

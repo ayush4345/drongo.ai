@@ -6,37 +6,37 @@ import {
   type AgentTurn,
   type ChatResponse,
   type ProviderInfo,
+  allProviderLabels,
   formatAgentAnswer,
+  formatBillable,
   formatToolAnswer,
+  providerForTool,
   uid,
+  type TurnPayment,
 } from "./chat-types";
 
 function buildFallbackSteps(
   provider: ProviderInfo,
   calls: NonNullable<ChatResponse["calls"]>,
   answer: string,
+  payment?: TurnPayment,
 ): AgentStep[] {
-  const SERVICE_LABELS: Record<string, string> = {
-    get_weather: "Weather",
-    get_crypto_price: "Crypto price",
-    translate_text: "Translation",
-  };
-
   const steps: AgentStep[] = [
     {
-      kind: "provider",
-      label: "Connected to provider",
-      detail: `${provider.name} · ${provider.url}`,
+      kind: "gateway",
+      label: "x402 gateway",
+      detail: `${provider.name} · ${provider.url}\nProviders: ${allProviderLabels()}`,
     },
   ];
 
   for (const [index, call] of calls.entries()) {
-    const service = SERVICE_LABELS[call.tool] ?? call.tool;
+    const meta = providerForTool(call.tool);
     steps.push({
       kind: "tool_call",
-      label: `Call ${index + 1}: ${service}`,
+      label: `Call ${index + 1}: ${meta.label}`,
       tool: call.tool,
-      service,
+      service: meta.label,
+      providerId: meta.id,
       args: call.args,
       served: call.served,
       summary: call.served ? formatToolAnswer(call.tool, call.result) : undefined,
@@ -48,6 +48,41 @@ function buildFallbackSteps(
   }
 
   steps.push({ kind: "answer", label: "Final answer", detail: answer });
+
+  const served = calls.filter((c) => c.served).length;
+  const p = payment ?? {
+    turnCalls: served,
+    turnBillable: String(served),
+    sessionCalls: served,
+    sessionBillable: String(served),
+    tokenSymbol: "XLM",
+    providers: [],
+  };
+
+  if (p.providers.length > 0) {
+    for (const prov of p.providers) {
+      if (prov.turnCalls === 0) continue;
+      steps.push({
+        kind: "provider_settlement",
+        label: `Settlement: ${prov.providerLabel}`,
+        providerId: prov.providerId,
+        tool: prov.tool,
+        service: prov.providerLabel,
+        detail: `${prov.turnCalls} call(s) · ${formatBillable(prov.turnBillable, p.tokenSymbol)}`,
+      });
+    }
+  }
+
+  const usedProviders = p.providers.filter((prov) => prov.turnCalls > 0).length;
+  steps.push({
+    kind: "payment_total",
+    label: "Turn payment (metered, settles on session close)",
+    detail:
+      p.turnCalls > 0
+        ? `${p.turnCalls} call(s) across ${usedProviders} provider(s) · ${formatBillable(p.turnBillable, p.tokenSymbol)}`
+        : "No metered calls this turn",
+  });
+
   return steps;
 }
 
@@ -142,7 +177,7 @@ export default function ChatPanel({ onTurnStart, onTurnComplete }: Props) {
       }
 
       const provider = data.provider ?? { name: "drongo-provider", url: "http://localhost:4021" };
-      const steps = data.steps ?? buildFallbackSteps(provider, data.calls ?? [], answer);
+      const steps = data.steps ?? buildFallbackSteps(provider, data.calls ?? [], answer, data.payment);
 
       setMessages((prev) => [...prev, { id: uid(), role: "assistant", content: answer }]);
       onTurnComplete({
@@ -151,6 +186,7 @@ export default function ChatPanel({ onTurnStart, onTurnComplete }: Props) {
         answer,
         provider,
         steps,
+        payment: data.payment,
         loading: false,
       });
       setStatus("ready");

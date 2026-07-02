@@ -19,11 +19,32 @@ export interface CallRecord {
   served: boolean;
   result?: unknown;
   reason?: string;
+  billable?: string;
+  cumulativeUnits?: string;
 }
 
 export interface AgentRunResult {
   answer: string;
   calls: CallRecord[];
+}
+
+export interface ProviderSettlement {
+  providerId: string;
+  providerLabel: string;
+  tool: string;
+  turnCalls: number;
+  turnBillable: string;
+  sessionCalls: number;
+  sessionBillable: string;
+}
+
+export interface TurnPayment {
+  turnCalls: number;
+  turnBillable: string;
+  sessionCalls: number;
+  sessionBillable: string;
+  tokenSymbol: string;
+  providers: ProviderSettlement[];
 }
 
 /**
@@ -67,6 +88,8 @@ export class ServiceAgent {
           record.result = out.result.result;
           gathered.push(out.result);
         }
+        if (out.billable !== undefined) record.billable = out.billable.toString();
+        if (out.cumulativeUnits !== undefined) record.cumulativeUnits = out.cumulativeUnits.toString();
         calls.push(record);
 
         if (!out.served && out.reason === "ceiling-exceeded") {

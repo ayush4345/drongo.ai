@@ -1,4 +1,6 @@
-import type { CallRecord } from "./agent.js";
+import { formatUnits } from "@drongo/agent-core";
+import type { CallRecord, TurnPayment } from "./agent.js";
+import { providerForTool, gatewayStepDetail } from "./providers.js";
 
 export interface ProviderInfo {
   name: string;
@@ -6,22 +8,17 @@ export interface ProviderInfo {
 }
 
 export interface AgentStep {
-  kind: "provider" | "tool_call" | "answer";
+  kind: "gateway" | "tool_call" | "answer" | "provider_settlement" | "payment_total";
   label: string;
   detail?: string;
   tool?: string;
   service?: string;
+  providerId?: string;
   args?: Record<string, unknown>;
   served?: boolean;
   summary?: string;
   reason?: string;
 }
-
-const SERVICE_LABELS: Record<string, string> = {
-  get_weather: "Weather",
-  get_crypto_price: "Crypto price",
-  translate_text: "Translation",
-};
 
 function summarizeCall(tool: string, result: unknown): string {
   if (result === null || typeof result !== "object") return String(result);
@@ -40,25 +37,27 @@ function summarizeCall(tool: string, result: unknown): string {
 }
 
 export function buildAgentSteps(
-  provider: ProviderInfo,
+  gateway: ProviderInfo,
   calls: CallRecord[],
   answer: string,
+  payment: TurnPayment,
 ): AgentStep[] {
   const steps: AgentStep[] = [
     {
-      kind: "provider",
-      label: "Connected to provider",
-      detail: `${provider.name} · ${provider.url}`,
+      kind: "gateway",
+      label: "x402 gateway",
+      detail: gatewayStepDetail(gateway),
     },
   ];
 
   for (const [index, call] of calls.entries()) {
-    const service = SERVICE_LABELS[call.tool] ?? call.tool;
+    const provider = providerForTool(call.tool);
     steps.push({
       kind: "tool_call",
-      label: `Call ${index + 1}: ${service}`,
+      label: `Call ${index + 1}: ${provider.label}`,
       tool: call.tool,
-      service,
+      service: provider.label,
+      providerId: provider.id,
       args: call.args,
       served: call.served,
       summary: call.served ? summarizeCall(call.tool, call.result) : undefined,
@@ -73,6 +72,32 @@ export function buildAgentSteps(
     kind: "answer",
     label: "Final answer",
     detail: answer,
+  });
+
+  if (payment.providers.length > 0) {
+    for (const p of payment.providers) {
+      if (p.turnCalls === 0) continue;
+      const turnAmt = formatUnits(BigInt(p.turnBillable));
+      steps.push({
+        kind: "provider_settlement",
+        label: `Settlement: ${p.providerLabel}`,
+        providerId: p.providerId,
+        tool: p.tool,
+        service: p.providerLabel,
+        detail: `${p.turnCalls} call(s) · ${turnAmt} ${payment.tokenSymbol}`,
+      });
+    }
+  }
+
+  const turnBillable = formatUnits(BigInt(payment.turnBillable));
+  const usedProviders = payment.providers.filter((p) => p.turnCalls > 0).length;
+  steps.push({
+    kind: "payment_total",
+    label: "Turn payment (metered, settles on session close)",
+    detail:
+      payment.turnCalls > 0
+        ? `${payment.turnCalls} call(s) across ${usedProviders} provider(s) · ${turnBillable} ${payment.tokenSymbol}`
+        : "No metered calls this turn",
   });
 
   return steps;

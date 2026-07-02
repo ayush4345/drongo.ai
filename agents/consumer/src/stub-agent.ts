@@ -58,20 +58,28 @@ export class StubAgentBrain implements AgentBrain {
 }
 
 function parseTranslation(goal: string): { text: string; to: string } | null {
-  const quoted = goal.match(/["'“”]([^"'“”]+)["'“”]/);
-  const text = quoted?.[1]?.trim();
-
-  let to: string | undefined;
   const lower = goal.toLowerCase();
+  let to: string | undefined;
   for (const [name, code] of Object.entries(LANGS)) {
     if (lower.includes(name)) {
       to = code;
       break;
     }
   }
+  if (to === undefined) return null;
 
-  if (text === undefined || text.length === 0 || to === undefined) return null;
-  return { text, to };
+  const quoted = goal.match(/["'\u201c\u201d]([^"'\u201c\u201d]+)["'\u201c\u201d]/);
+  if (quoted?.[1]?.trim()) {
+    return { text: quoted[1].trim(), to };
+  }
+
+  const unquoted = goal.match(/translat(?:e|ion)?\s+(.+?)\s+(?:to|into)\s+/i);
+  if (unquoted?.[1]) {
+    const text = unquoted[1].replace(/^["'\u201c\u201d]|["'\u201c\u201d]$/g, "").trim();
+    if (text.length > 0) return { text, to };
+  }
+
+  return null;
 }
 
 const NOISE = new Set([
