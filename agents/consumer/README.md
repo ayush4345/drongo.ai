@@ -60,6 +60,27 @@ Both demos settle to a `MockChainClient` by default (offline). Set
 to **real Soroban** settlement on Stellar testnet — the settle tx then prints a
 `stellar.expert` explorer link.
 
+## Run the chat UI (provider + consumer + web)
+
+```bash
+# terminal 1 — provider x402 server (:4021)
+pnpm --filter @drongo/agent-provider serve
+
+# terminal 2 — consumer chat server (:4022)
+pnpm --filter @drongo/agent-consumer serve
+
+# terminal 3 — Next.js chat UI (:3000)
+pnpm --filter @drongo/web dev
+```
+
+Open http://localhost:3000/dashboard and chat. The UI proxies to the consumer
+via `POST /api/chat` → `POST http://localhost:4022/chat`. Set `AGENT_URL` if
+the consumer listens elsewhere. Set `OPENAI_API_KEY` for real LLM tool selection;
+otherwise the stub brain runs offline.
+
+On shutdown (Ctrl+C), the consumer server settles the metered channel with one
+ZK proof.
+
 ## Exposed
 
 `ServiceAgent`, `AgentBrain`, `AgentDecision`, `CallRecord`, `AgentRunResult`;

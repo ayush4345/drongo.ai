@@ -115,6 +115,135 @@ body:has(.chat-shell) {
   box-shadow: 0 0 0 3px rgba(52, 196, 159, 0.15);
 }
 
+.status-loading {
+  color: #6b5a2e;
+  border-color: #ebe0c8;
+  background: rgba(255, 251, 240, 0.95);
+}
+
+.status-loading::before {
+  background: #d4a017;
+  box-shadow: 0 0 0 3px rgba(212, 160, 23, 0.15);
+}
+
+.status-error {
+  color: #7a3030;
+  border-color: #ecd8d8;
+  background: rgba(255, 247, 247, 0.95);
+}
+
+.status-error::before {
+  background: #d44;
+  box-shadow: 0 0 0 3px rgba(221, 68, 68, 0.15);
+}
+
+.chat-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.chat-offline {
+  margin-top: 18px !important;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(212, 68, 68, 0.25);
+  background: rgba(255, 245, 245, 0.9);
+  color: #8a3030 !important;
+  font-size: 13px !important;
+}
+
+.chat-messages {
+  list-style: none;
+  margin: 0;
+  padding: 20px 18px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.chat-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: min(720px, 100%);
+}
+
+.chat-msg-user {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.chat-msg-assistant {
+  align-self: flex-start;
+}
+
+.chat-msg-role {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #94948d;
+}
+
+.chat-msg-text {
+  margin: 0;
+  padding: 12px 16px;
+  border-radius: 16px;
+  font-size: 15px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chat-msg-user .chat-msg-text {
+  background: #20201d;
+  color: #ffffff;
+  border-bottom-right-radius: 4px;
+}
+
+.chat-msg-assistant .chat-msg-text {
+  background: rgba(245, 245, 242, 0.95);
+  color: #252522;
+  border: 1px solid rgba(34, 34, 30, 0.08);
+  border-bottom-left-radius: 4px;
+}
+
+.chat-msg-pending .chat-msg-text {
+  color: #74746d;
+  font-style: italic;
+}
+
+.chat-tool-calls {
+  margin: 0;
+  padding: 0 0 0 4px;
+  list-style: none;
+  font-size: 12px;
+  color: #74746d;
+  line-height: 1.45;
+}
+
+.chat-tool-calls li {
+  margin-top: 4px;
+}
+
+.chat-tool-calls .paid {
+  color: #245f51;
+  font-weight: 650;
+}
+
+.chat-tool-calls .skipped {
+  color: #9a6b2e;
+  font-weight: 650;
+}
+
+.chat-composer button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .chat-empty {
   flex: 1;
   min-height: 0;

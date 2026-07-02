@@ -36,11 +36,14 @@ export async function fetchWithManualX402({
 
   return fetchImpl(url, {
     ...init,
-    headers: { ...headersToRecord(init?.headers), "X-PAYMENT": xPayment },
+    headers: { ...headersToRecord(init?.headers as HeaderInput), "X-PAYMENT": xPayment },
   });
 }
 
-function headersToRecord(headers: HeadersInit | undefined): Record<string, string> {
+type HeaderInput = Record<string, string> | Array<[string, string]> | undefined;
+
+function headersToRecord(headers: HeaderInput): Record<string, string> {
   if (headers === undefined) return {};
-  return Object.fromEntries(new Headers(headers).entries());
+  if (Array.isArray(headers)) return Object.fromEntries(headers);
+  return headers;
 }
