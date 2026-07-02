@@ -25,6 +25,57 @@ function uid(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function formatToolCallSummary(
+  tool: string,
+  result: unknown,
+): string {
+  if (result === null || typeof result !== "object") return String(result);
+  const r = result as Record<string, unknown>;
+
+  if (tool === "get_weather") {
+    return `${r.location}: ${r.temperatureC}°C, ${r.summary ?? "—"}`;
+  }
+  if (tool === "get_crypto_price") {
+    return `${r.coin ?? r.id}: ${r.price ?? r.usd}`;
+  }
+  if (tool === "translate_text") {
+    return String(r.translatedText ?? r.text ?? "—");
+  }
+  return JSON.stringify(result);
+}
+
+function formatToolAnswer(tool: string, result: unknown): string {
+  if (result === null || typeof result !== "object") return String(result);
+  const r = result as Record<string, unknown>;
+
+  if (tool === "get_weather") {
+    const location = r.location ?? "Unknown";
+    const temp = r.temperatureC;
+    const summary = r.summary ?? "unknown conditions";
+    const wind = r.windKph;
+    return `Weather in ${location}: ${temp}°C, ${summary}${wind !== undefined ? `, wind ${wind} km/h` : ""}.`;
+  }
+  if (tool === "get_crypto_price") {
+    const coin = r.coin ?? r.id ?? "asset";
+    const price = r.price ?? r.usd;
+    const change = r.change24h ?? r.change_24h;
+    const suffix = change !== undefined ? ` (${Number(change) >= 0 ? "+" : ""}${change}% 24h)` : "";
+    return `${coin} price: ${price}${suffix}.`;
+  }
+  if (tool === "translate_text") {
+    return `Translation: ${r.translatedText ?? r.text ?? "—"}`;
+  }
+  return JSON.stringify(result);
+}
+
+function formatAgentAnswer(answer: string, calls?: ChatMessage["calls"]): string {
+  const served = calls?.filter((c) => c.served && c.result !== undefined) ?? [];
+  if (served.length > 0) {
+    return served.map((c) => formatToolAnswer(c.tool, c.result)).join("\n\n");
+  }
+  return answer;
+}
+
 export default function ChatPanel() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -79,7 +130,7 @@ export default function ChatPanel() {
         {
           id: uid(),
           role: "assistant",
-          content: data.answer!,
+          content: formatAgentAnswer(data.answer!, data.calls),
           calls: data.calls,
         },
       ]);
@@ -151,7 +202,7 @@ export default function ChatPanel() {
                         </span>{" "}
                         {c.tool}
                         {c.served && c.result !== undefined
-                          ? `: ${JSON.stringify(c.result)}`
+                          ? ` · ${formatToolCallSummary(c.tool, c.result)}`
                           : c.reason
                             ? ` (${c.reason})`
                             : ""}

@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { MeterDb, type ChannelTerms, type Voucher } from "./index.js";
+import type { ChannelTerms } from "./channel.js";
+import { MeterDb } from "./db.js";
+import type { Voucher } from "@drongo/proving-setup";
 
 function bytes(fill: number): Uint8Array {
   return new Uint8Array(32).fill(fill);

@@ -23,8 +23,8 @@ const LANGS: Record<string, string> = {
 export class StubAgentBrain implements AgentBrain {
   async decide(goal: string, _tools: ToolSpec[], gathered: ToolResult[]): Promise<AgentDecision> {
     if (gathered.length > 0) {
-      const parts = gathered.map((g) => `${g.tool} → ${JSON.stringify(g.result)}`);
-      return { answer: `Used ${gathered.length} paid service(s): ${parts.join("  |  ")}` };
+      const parts = gathered.map((g) => formatToolResult(g.tool, g.result));
+      return { answer: parts.join("\n\n") };
     }
 
     const g = goal.toLowerCase();
@@ -90,4 +90,33 @@ function extractPlaces(goal: string): string[] {
     if (!out.includes(m)) out.push(m);
   }
   return out;
+}
+
+function formatToolResult(tool: string, result: unknown): string {
+  if (result === null || typeof result !== "object") return String(result);
+
+  const r = result as Record<string, unknown>;
+
+  if (tool === "get_weather") {
+    const location = r.location ?? "Unknown";
+    const temp = r.temperatureC;
+    const summary = r.summary ?? "unknown conditions";
+    const wind = r.windKph;
+    return `Weather in ${location}: ${temp}°C, ${summary}${wind !== undefined ? `, wind ${wind} km/h` : ""}.`;
+  }
+
+  if (tool === "get_crypto_price") {
+    const coin = r.coin ?? r.id ?? "asset";
+    const price = r.price ?? r.usd;
+    const change = r.change24h ?? r.change_24h;
+    const suffix = change !== undefined ? ` (${Number(change) >= 0 ? "+" : ""}${change}% 24h)` : "";
+    return `${coin} price: ${price}${suffix}.`;
+  }
+
+  if (tool === "translate_text") {
+    const translated = r.translatedText ?? r.text ?? JSON.stringify(result);
+    return `Translation: ${translated}`;
+  }
+
+  return JSON.stringify(result);
 }

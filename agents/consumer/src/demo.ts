@@ -9,8 +9,8 @@ import {
   realChainFromEnv,
   parseUnits,
   formatUnits,
-  MeterDb,
 } from "@drongo/agent-core";
+import { MeterDb } from "@drongo/agent-core/db";
 import type { ChainClient, ChannelTerms } from "@drongo/agent-core";
 import { FetchHttpClient, buildToolbox, TOOL_SPECS } from "@drongo/agent-provider";
 import { ServiceAgent } from "./agent.js";

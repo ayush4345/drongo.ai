@@ -9,7 +9,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./db": {
+      "types": "./dist/db.d.ts",
+      "default": "./dist/db.js"
     }
+  },
+  "engines": {
+    "node": ">=20"
   },
   "files": [
     "dist"
