@@ -12,10 +12,11 @@ import {
   MeterDb,
 } from "@drongo/agent-core";
 import type { ChainClient, ChannelTerms } from "@drongo/agent-core";
-import { WeatherService, FetchHttpClient } from "@drongo/agent-provider";
-import { StubLlmClient } from "./llm.js";
-import { OpenAiLlmClient } from "./openai-client.js";
-import { WeatherConsumerAgent } from "./consumer.js";
+import { FetchHttpClient } from "@drongo/agent-provider";
+import { buildToolbox, TOOL_SPECS } from "./tools.js";
+import { ServiceAgent } from "./agent.js";
+import { StubAgentBrain } from "./stub-agent.js";
+import { OpenAiAgentBrain } from "./openai-agent.js";
 
 // Load the monorepo-root .env (…/drongo.ai/.env) regardless of the directory the
 // demo is run from. A missing file is fine — the demo then runs in offline mock
@@ -39,7 +40,9 @@ function randField(): bigint {
 }
 
 async function main(): Promise<void> {
-  const goal = process.argv.slice(2).join(" ") || "Which is warmest right now: Tokyo, London, or Cairo?";
+  const goal =
+    process.argv.slice(2).join(" ") ||
+    "What's the weather in Tokyo, the price of ETH in USD, and translate 'good morning' into Japanese?";
 
   // Amounts are in the settlement token's base units (Stellar = 7 decimals,
   // stroops). Default settlement asset is native XLM (see realChainFromEnv).
@@ -76,9 +79,15 @@ async function main(): Promise<void> {
 
   const rateCommitment = await computeRateCommitment(rate, terms.rateBlind);
   const meterDb = new MeterDb(process.env.METER_DB_PATH ?? "artifacts/metering.db");
-  const channel = await ServiceChannel.open(terms, new WeatherService(new FetchHttpClient(), 1n), {
+
+  // One channel over a TOOLBOX of services — the agent picks which tool to use,
+  // every call meters here, and the whole session settles with one proof.
+  const http = new FetchHttpClient();
+  const toolbox = buildToolbox(http);
+  const channel = await ServiceChannel.open(terms, toolbox, {
     meterDb,
     rateCommitment,
+    serviceName: "toolbox",
   });
 
   // ── OPEN ──────────────────────────────────────────────────────────────
@@ -88,6 +97,7 @@ async function main(): Promise<void> {
     console.log(`  settlement token:  ${symbol}  (${real.tokenId})`);
     console.log(`  addresses:         ${real.label}`);
   }
+  console.log(`  services offered:  ${toolbox.toolNames().join(", ")}`);
   console.log(`  rate (PRIVATE):    ${formatUnits(rate)} ${symbol} / call`);
   console.log(`  escrow (public):   ${formatUnits(escrow)} ${symbol}`);
   console.log(`  rate commitment:   ${rateCommitment.toString().slice(0, 16)}…  (Poseidon(rate, blind))`);
@@ -104,22 +114,24 @@ async function main(): Promise<void> {
   meterDb.updateOpenTx(terms.channelId, opened.openTx);
   console.log(`  open tx:           ${opened.openTx}`);
 
-  // ── METER (off-chain, per call) ───────────────────────────────────────
+  // ── METER (off-chain) — the agent chooses which services to use ───────
   const useOpenAi = Boolean(process.env.OPENAI_API_KEY);
-  const llm = useOpenAi ? new OpenAiLlmClient() : new StubLlmClient();
-  console.log(`\n═══ METER (off-chain) — ${useOpenAi ? "OpenAI" : "stub"} consumer ═══`);
+  const brain = useOpenAi ? new OpenAiAgentBrain() : new StubAgentBrain();
+  console.log(`\n═══ METER (off-chain) — ${useOpenAi ? "OpenAI" : "stub"} tool-using agent ═══`);
   console.log(`  goal: ${goal}`);
 
-  const { answer, lookups } = await new WeatherConsumerAgent(channel, llm).run(goal);
-  for (const l of lookups) {
-    const detail = l.served && l.result ? `${l.result.temperatureC}°C, ${l.result.summary}` : (l.reason ?? "refused");
-    console.log(`  ${l.served ? "paid+served" : "skipped   "}  ${l.location.padEnd(14)} ${detail}`);
+  const { answer, calls } = await new ServiceAgent(channel, brain, TOOL_SPECS).run(goal);
+  for (const c of calls) {
+    const detail = c.served ? JSON.stringify(c.result) : (c.reason ?? "refused");
+    console.log(
+      `  ${c.served ? "paid+served" : "skipped   "}  ${c.tool.padEnd(16)} ${JSON.stringify(c.args)} → ${detail}`,
+    );
   }
   console.log(`  answer: ${answer}`);
 
-  // ── SETTLE (one ZK proof) ─────────────────────────────────────────────
+  // ── SETTLE (one ZK proof, for the whole mixed session) ────────────────
   console.log(`\n═══ SETTLE — one on-chain settlement (${mode}) ═══`);
-  const served = lookups.filter((l) => l.served).length;
+  const served = calls.filter((c) => c.served).length;
   const settlement = await channel.close(); // generates the real Groth16 proof
   const settled = await chain.settle({
     settlement: settlement.serialized,
@@ -129,7 +141,7 @@ async function main(): Promise<void> {
   });
 
   const settledUnits = settlement.serialized.publicSignals[3] ?? 0n;
-  console.log(`  calls served (PRIVATE):  ${served}`);
+  console.log(`  paid calls (PRIVATE):    ${served}  across ${new Set(calls.filter((c) => c.served).map((c) => c.tool)).size} service(s)`);
   console.log(`  settled to provider:     ${formatUnits(settledUnits)} ${symbol}`);
   console.log(`  refunded to consumer:    ${formatUnits(escrow - settledUnits)} ${symbol}`);
   console.log(`  proof bytes:             a=${settlement.serialized.proof.a.length} b=${settlement.serialized.proof.b.length} c=${settlement.serialized.proof.c.length}`);
