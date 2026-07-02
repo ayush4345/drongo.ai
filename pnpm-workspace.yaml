@@ -1,6 +1,7 @@
 packages:
   - "packages/*"
   - "agents/*"
+  - "web"
 allowBuilds:
   blake-hash: true
   esbuild: true
