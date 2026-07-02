@@ -1,5 +1,5 @@
 import type { MeteredServiceChannel, ToolCall, ToolResult } from "@drongo/agent-core";
-import type { ToolSpec } from "./tools.js";
+import type { ToolSpec } from "@drongo/agent-provider";
 
 /** What the brain decides each round: some tool calls to make, or a final answer. */
 export interface AgentDecision {

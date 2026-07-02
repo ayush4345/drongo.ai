@@ -1,6 +1,6 @@
 import type { ToolResult } from "@drongo/agent-core";
 import type { AgentBrain, AgentDecision } from "./agent.js";
-import type { ToolSpec } from "./tools.js";
+import type { ToolSpec } from "@drongo/agent-provider";
 
 /**
  * OpenAI-backed tool-using brain. The provider's tools are handed to the model

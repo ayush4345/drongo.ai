@@ -1,6 +1,6 @@
 import type { ToolResult } from "@drongo/agent-core";
 import type { AgentBrain, AgentDecision } from "./agent.js";
-import type { ToolSpec } from "./tools.js";
+import type { ToolSpec } from "@drongo/agent-provider";
 
 const COINS: Record<string, string> = {
   btc: "bitcoin", bitcoin: "bitcoin", eth: "ethereum", ethereum: "ethereum",
