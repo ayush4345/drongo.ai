@@ -1,18 +1,5 @@
 import type { Service } from "@drongo/agent-core";
-
-/** Minimal injectable HTTP client so the weather service is testable offline. */
-export interface HttpClient {
-  getJson(url: string): Promise<any>;
-}
-
-/** Real HTTP client using the global fetch (Node 20+). Runs on the provider's server. */
-export class FetchHttpClient implements HttpClient {
-  async getJson(url: string): Promise<any> {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
-    return res.json();
-  }
-}
+import type { HttpClient } from "./http.js";
 
 export interface WeatherRequest {
   /** A place name to look up, e.g. "Tokyo" or "Paris, France". */

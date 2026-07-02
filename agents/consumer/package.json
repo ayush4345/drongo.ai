@@ -17,7 +17,8 @@
   "scripts": {
     "build": "tsc -b",
     "clean": "rm -rf dist *.tsbuildinfo",
-    "demo": "tsx src/demo.ts"
+    "demo": "tsx src/demo.ts",
+    "demo:x402": "tsx src/x402-demo.ts"
   },
   "dependencies": {
     "@drongo/agent-core": "workspace:*",

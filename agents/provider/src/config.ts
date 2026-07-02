@@ -1,0 +1,26 @@
+/** Runtime config for the provider's x402 HTTP server (read from env). */
+export interface ProviderServerConfig {
+  port: number;
+  network: string;
+  /** SEP-41 token contract accepted for payment (default: testnet USDC). */
+  asset: string;
+  /** Stellar account that receives settlement. */
+  payTo: string;
+  /** Max amount (atomic units) advertised in the 402 terms. */
+  maxAmount: string;
+  /** When true, use the MockPaymentVerifier (no real facilitator). */
+  mockX402: boolean;
+  facilitatorUrl: string;
+}
+
+export function readProviderServerConfig(env: NodeJS.ProcessEnv = process.env): ProviderServerConfig {
+  return {
+    port: Number(env.PORT ?? "4021"),
+    network: env.X402_NETWORK ?? "stellar:testnet",
+    asset: env.X402_ASSET ?? "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
+    payTo: env.X402_PAY_TO ?? "GDRONGO_PROVIDER_DEMO",
+    maxAmount: env.X402_MAX_AMOUNT ?? "100000000",
+    mockX402: (env.MOCK_X402 ?? "true") !== "false",
+    facilitatorUrl: env.X402_FACILITATOR_URL ?? "http://localhost:4023",
+  };
+}
