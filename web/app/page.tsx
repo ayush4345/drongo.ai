@@ -1,39 +1,33 @@
-import "./chat.css";
+import Announce from "@/components/Announce";
+import Nav from "@/components/Nav";
+import Hero from "@/components/Hero";
+import Problem from "@/components/Problem";
+import HowItWorks from "@/components/HowItWorks";
+import Features from "@/components/Features";
+import Flow from "@/components/Flow";
+import AccentBand from "@/components/AccentBand";
+import Tech from "@/components/Tech";
+import Sponsors from "@/components/Sponsors";
+import Cta from "@/components/Cta";
+import SiteFooter from "@/components/SiteFooter";
+import ScrollReveal from "@/components/ScrollReveal";
 
-export default function ChatPage() {
+export default function Home() {
   return (
-    <main className="chat-shell" aria-label="Chatbot interface">
-      <section className="chat-panel" aria-label="Chat conversation">
-        <header className="chat-header">
-          <div className="chat-title">
-            <span className="eyebrow">Chatbot</span>
-          </div>
-          <span className="status">Ready</span>
-        </header>
-
-        <div className="chat-empty" aria-label="Empty conversation">
-          <h2>What can I help with?</h2>
-          <p>Start a conversation by typing a message below.</p>
-        </div>
-
-        <form className="chat-composer" aria-label="Chat input">
-          <label className="sr-only" htmlFor="chat-input">
-            Ask anything
-          </label>
-          <textarea
-            id="chat-input"
-            name="message"
-            placeholder="Ask anything"
-            autoComplete="off"
-            rows={1}
-          />
-          <button type="submit" aria-label="Send message">
-            <span aria-hidden="true">↑</span>
-          </button>
-        </form>
-      </section>
-
-      <aside className="chat-sidebar" aria-label="Sidebar" />
-    </main>
+    <>
+      <Announce />
+      <Nav />
+      <Hero />
+      <Problem />
+      <HowItWorks />
+      <Features />
+      <Flow />
+      <AccentBand />
+      <Tech />
+      <Sponsors />
+      <Cta />
+      <SiteFooter />
+      <ScrollReveal />
+    </>
   );
 }
