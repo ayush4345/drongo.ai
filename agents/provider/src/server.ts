@@ -107,7 +107,8 @@ export function createProviderServer(deps: ProviderServerDeps): Express {
       return;
     }
 
-    const receipt = await meter.receive(deserializeVoucher(body.voucher));
+    const voucher = deserializeVoucher(body.voucher);
+    const receipt = await meter.verify(voucher);
     if (!receipt.accepted) {
       // A metering refusal is a valid 200 response — the consumer reads `reason`.
       res.json({
@@ -123,9 +124,14 @@ export function createProviderServer(deps: ProviderServerDeps): Express {
     try {
       result = await toolbox.handle(body.payload as ToolCall);
     } catch (error) {
+      // Tool failed — do NOT commit the meter, so an unserved call bills nothing
+      // and the provider's cumulative stays in sync with the consumer's.
       res.status(502).json({ served: false, reason: `tool-error: ${(error as Error).message}` });
       return;
     }
+
+    // Served — commit the voucher so the meter advances only for served calls.
+    meter.commit(voucher);
 
     res.json({
       served: true,

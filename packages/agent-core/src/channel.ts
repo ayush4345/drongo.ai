@@ -92,11 +92,24 @@ export class ConsumerMeter {
     private readonly channelId: bigint,
   ) {}
 
-  /** Advance the meter by `units` and return the fresh cumulative voucher. */
+  /**
+   * Sign a cumulative voucher for the NEXT `units` on top of the last committed
+   * total, WITHOUT advancing the meter. Call {@link commit} with the voucher
+   * once the provider accepts it. If the provider refuses (or the tool errors),
+   * simply drop the voucher: the meter is unchanged, so a retry re-signs at the
+   * same total and non-served attempts never inflate the settled amount.
+   */
   async signFor(units: bigint): Promise<Voucher> {
     if (units <= 0n) throw new Error("units must be positive");
-    this.#cumulative += units;
-    return createVoucher(this.privateKey, this.channelId, this.#cumulative);
+    return createVoucher(this.privateKey, this.channelId, this.#cumulative + units);
+  }
+
+  /** Commit an accepted voucher, advancing the running cumulative total. */
+  commit(voucher: Voucher): void {
+    if (voucher.totalUnits <= this.#cumulative) {
+      throw new Error("voucher does not advance the cumulative total");
+    }
+    this.#cumulative = voucher.totalUnits;
   }
 
   get cumulativeUnits(): bigint {
@@ -127,7 +140,14 @@ export class ProviderMeter {
     private readonly escrow: bigint,
   ) {}
 
-  async receive(voucher: Voucher): Promise<ReceiveResult> {
+  /**
+   * Validate a voucher (channel, monotonicity, signature, escrow ceiling)
+   * WITHOUT committing it. Call {@link commit} once the call is actually served
+   * so the meter advances only for served calls — a voucher whose tool later
+   * fails must not inflate the settled total. Hitting the ceiling still halts
+   * the channel, since that is terminal regardless of the tool outcome.
+   */
+  async verify(voucher: Voucher): Promise<ReceiveResult> {
     if (this.#halted) return { accepted: false, reason: "ceiling-exceeded" };
     if (voucher.channelId !== this.channelId) return { accepted: false, reason: "wrong-channel" };
 
@@ -144,8 +164,16 @@ export class ProviderMeter {
       return { accepted: false, reason: "ceiling-exceeded", cumulativeUnits: voucher.totalUnits, billable };
     }
 
-    this.#latest = voucher;
     return { accepted: true, cumulativeUnits: voucher.totalUnits, billable };
+  }
+
+  /** Commit a verified voucher after the call is served, advancing the meter. */
+  commit(voucher: Voucher): void {
+    const prev = this.#latest?.totalUnits ?? 0n;
+    if (voucher.totalUnits <= prev) {
+      throw new Error("voucher does not advance the cumulative total");
+    }
+    this.#latest = voucher;
   }
 
   get latestVoucher(): Voucher | undefined {
@@ -210,7 +238,7 @@ export class ServiceChannel<Req, Res> implements MeteredServiceChannel<Req, Res>
     if (cost <= 0n) throw new Error("service price must be positive");
 
     const voucher = await this.#consumer.signFor(cost);
-    const res = await this.#provider.receive(voucher);
+    const res = await this.#provider.verify(voucher);
 
     if (!res.accepted) {
       if (res.reason === "ceiling-exceeded") {
@@ -234,6 +262,14 @@ export class ServiceChannel<Req, Res> implements MeteredServiceChannel<Req, Res>
       };
     }
 
+    // Serve the tool BEFORE committing, so a failing tool bills nothing.
+    const result = await this.#service.handle(req);
+
+    // Served — commit both meters so they advance only for served calls and stay
+    // in lock-step (provider's last-accepted == consumer's cumulative).
+    this.#consumer.commit(voucher);
+    this.#provider.commit(voucher);
+
     this.#meterDb?.updateMeter(
       this.terms.channelId,
       res.cumulativeUnits ?? voucher.totalUnits,
@@ -246,7 +282,7 @@ export class ServiceChannel<Req, Res> implements MeteredServiceChannel<Req, Res>
       served: true,
       request: req,
       voucher,
-      result: await this.#service.handle(req),
+      result,
       cost,
       cumulativeUnits: res.cumulativeUnits,
       billable: res.billable,

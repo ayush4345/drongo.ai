@@ -159,6 +159,9 @@ export class X402ServiceChannel<Req, Res> implements MeteredServiceChannel<Req, 
     const body = (await res.json().catch(() => ({}))) as CallResponseBody;
     const served = res.ok && body.served === true;
     if (served) {
+      // Provider served the call — commit so the meter advances only for served
+      // calls; refused attempts leave the cumulative total untouched.
+      this.#consumer.commit(voucher);
       this.#lastAccepted = voucher;
       this.#meterDb?.updateMeter(this.#terms.channelId, voucher.totalUnits, voucher, false);
     }
