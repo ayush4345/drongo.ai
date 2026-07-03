@@ -22,6 +22,10 @@ export interface ProviderServerConfig {
 
 export function readProviderServerConfig(env: NodeJS.ProcessEnv = process.env): ProviderServerConfig {
   return {
+    // NOTE: PORT is a SHARED key — the consumer server reads it too (as a
+    // fallback after CONSUMER_PORT). In the shared root .env, leave PORT unset
+    // and rely on this 4021 default; set CONSUMER_PORT for the consumer.
+    // A bare PORT= in the shared file would make both servers bind the same port.
     port: Number(env.PORT ?? "4021"),
     network: env.X402_NETWORK ?? "stellar:testnet",
     asset: env.X402_ASSET ?? "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",

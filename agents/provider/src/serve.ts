@@ -1,11 +1,19 @@
 // Runnable entrypoint for the provider's x402 HTTP server.
 //   pnpm --filter @drongo/agent-provider serve
-// Env: PORT, X402_NETWORK, X402_ASSET, X402_PAY_TO, X402_MAX_AMOUNT,
+// Env: PORT, RATE, X402_NETWORK, X402_ASSET, X402_PAY_TO, X402_MAX_AMOUNT,
 //      MOCK_X402 (default true), X402_FACILITATOR_URL.
+// Loads the shared repo-root .env (same file the consumer reads), so provider
+// config lives alongside consumer config in one place. Shell env still wins.
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { config as loadEnv } from "dotenv";
 import { readProviderServerConfig } from "./config.js";
 import { FetchHttpClient } from "./http.js";
 import { buildToolbox } from "./tools.js";
 import { createProviderServer } from "./server.js";
+
+const envPath = resolve(dirname(fileURLToPath(import.meta.url)), "../../../.env");
+loadEnv({ path: envPath });
 
 const config = readProviderServerConfig();
 const toolbox = buildToolbox(new FetchHttpClient());
