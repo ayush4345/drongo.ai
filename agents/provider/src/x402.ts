@@ -10,6 +10,12 @@ export interface PaymentRequirements {
   mimeType: string;
   payTo: string;
   asset: string;
+  /**
+   * Drongo extension: the provider's per-unit rate in the settlement token's
+   * decimal units. The consumer reads this from the 402 and accepts it as the
+   * channel rate — the provider is the source of truth for its price.
+   */
+  rate: string;
   maxTimeoutSeconds: number;
 }
 
@@ -26,10 +32,11 @@ export function buildPaymentRequirements(config: ProviderServerConfig): PaymentR
     network: config.network,
     maxAmountRequired: config.maxAmount,
     resource: "/agent/open",
-    description: "Open a metered Drongo channel; escrow funds pay-per-call usage.",
+    description: "Open a metered Drongo channel; escrow funds pay-per-call usage at the advertised rate.",
     mimeType: "application/json",
     payTo: config.payTo,
     asset: config.asset,
+    rate: config.rate,
     maxTimeoutSeconds: 120,
   };
 }

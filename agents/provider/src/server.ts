@@ -1,6 +1,6 @@
 import express from "express";
 import type { Express } from "express";
-import { deserializeVoucher, isWireVoucher } from "@drongo/agent-core";
+import { deserializeVoucher, isWireVoucher, parseUnits } from "@drongo/agent-core";
 import type { ToolboxService, ToolCall } from "@drongo/agent-core";
 import type { ProviderServerConfig } from "./config.js";
 import { build402Response, buildPaymentRequirements, readPaymentHeader } from "./x402.js";
@@ -23,11 +23,14 @@ export interface ProviderServerDeps {
  * The provider's x402 HTTP resource server. It lives INSIDE agents/provider
  * because the provider is the thing exposing the endpoint. Flow per the x402
  * spec: a bare `POST /agent/open` returns `402 Payment Required` with the
- * accepted `PaymentRequirements`; the consumer retries with an `X-PAYMENT`
- * header, the server verifies (+ settles) it, and the metered channel opens.
- * Thereafter each `POST /channels/:id/call` carries the consumer's cumulative
- * voucher, which the ProviderMeter validates before the tool runs. Settlement
- * itself is one ZK proof the consumer builds at close — the provider only meters.
+ * accepted `PaymentRequirements` — which advertise the provider's rate, payTo
+ * address and asset. The consumer accepts those terms and retries with an
+ * `X-PAYMENT` header; the server verifies (+ settles) it and opens the metered
+ * channel, metering at ITS OWN advertised rate (it no longer trusts a
+ * consumer-supplied rate). Each `POST /channels/:id/call` carries the consumer's
+ * cumulative voucher, which the ProviderMeter validates before the tool runs.
+ * Settlement itself is one ZK proof the consumer builds at close — the provider
+ * only meters.
  */
 export function createProviderServer(deps: ProviderServerDeps): Express {
   const { config, toolbox } = deps;
@@ -37,7 +40,7 @@ export function createProviderServer(deps: ProviderServerDeps): Express {
   const app = express();
   app.use(express.json({ limit: "1mb" }));
 
-  // Agent card — advertises the tools and the x402 open endpoint.
+  // Agent card — advertises the tools and the x402 open endpoint (incl. rate).
   app.get("/.well-known/agent-card.json", (_req, res) => {
     res.json({
       name: "drongo-provider",
@@ -47,7 +50,8 @@ export function createProviderServer(deps: ProviderServerDeps): Express {
     });
   });
 
-  // x402-gated channel open: 402 without a payment header, else verify + register.
+  // x402-gated channel open: 402 (advertising rate/payTo/asset) without a payment
+  // header, else verify + register at the provider's OWN rate.
   app.post("/agent/open", async (req, res) => {
     const payment = readPaymentHeader(req.headers as Record<string, unknown>);
     if (payment === null) {
@@ -61,10 +65,11 @@ export function createProviderServer(deps: ProviderServerDeps): Express {
       return;
     }
 
+    // The consumer proposes the escrow ceiling; the RATE is the provider's own
+    // (advertised in the 402), so a consumer can't dictate the price.
     const body = req.body as {
       channelId?: string;
       consumerPublicKey?: { x?: string; y?: string };
-      rate?: string;
       escrow?: string;
     };
     if (
@@ -72,7 +77,6 @@ export function createProviderServer(deps: ProviderServerDeps): Express {
       body.consumerPublicKey === undefined ||
       typeof body.consumerPublicKey.x !== "string" ||
       typeof body.consumerPublicKey.y !== "string" ||
-      typeof body.rate !== "string" ||
       typeof body.escrow !== "string"
     ) {
       res.status(400).json({ ok: false, error: "invalid open payload" });
@@ -82,10 +86,10 @@ export function createProviderServer(deps: ProviderServerDeps): Express {
     registry.open({
       channelId: BigInt(body.channelId),
       consumerPublicKey: { x: BigInt(body.consumerPublicKey.x), y: BigInt(body.consumerPublicKey.y) },
-      rate: BigInt(body.rate),
+      rate: parseUnits(config.rate),
       escrow: BigInt(body.escrow),
     });
-    res.json({ ok: true, channelId: body.channelId, settlementTx: verified.settlementTx });
+    res.json({ ok: true, channelId: body.channelId, rate: config.rate, payTo: config.payTo, asset: config.asset, settlementTx: verified.settlementTx });
   });
 
   // Metered call: validate the cumulative voucher, then run the tool.

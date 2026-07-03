@@ -6,6 +6,13 @@ export interface ProviderServerConfig {
   asset: string;
   /** Stellar account that receives settlement. */
   payTo: string;
+  /**
+   * The provider's per-unit rate in the settlement token's DECIMAL units
+   * (e.g. "0.0001"). This is the source of truth: it is advertised in the 402
+   * terms and used to meter every call. The consumer accepts it — it no longer
+   * sends its own rate.
+   */
+  rate: string;
   /** Max amount (atomic units) advertised in the 402 terms. */
   maxAmount: string;
   /** When true, use the MockPaymentVerifier (no real facilitator). */
@@ -19,6 +26,7 @@ export function readProviderServerConfig(env: NodeJS.ProcessEnv = process.env): 
     network: env.X402_NETWORK ?? "stellar:testnet",
     asset: env.X402_ASSET ?? "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
     payTo: env.X402_PAY_TO ?? "GDRONGO_PROVIDER_DEMO",
+    rate: env.RATE ?? "0.0001",
     maxAmount: env.X402_MAX_AMOUNT ?? "100000000",
     mockX402: (env.MOCK_X402 ?? "true") !== "false",
     facilitatorUrl: env.X402_FACILITATOR_URL ?? "http://localhost:4023",
