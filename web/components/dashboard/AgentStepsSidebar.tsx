@@ -1,5 +1,6 @@
 "use client";
 
+import { useWallet } from "../../lib/wallet-context";
 import type { AgentTurn } from "./chat-types";
 import { formatBillable, sumChatPayments } from "./chat-types";
 
@@ -9,9 +10,13 @@ type Props = {
 };
 
 export default function AgentStepsSidebar({ turns, activeTurnId }: Props) {
+  const wallet = useWallet();
   const active = turns.find((t) => t.id === activeTurnId) ?? turns[turns.length - 1];
   const chatPayment = sumChatPayments(turns);
-  const showChatTotal = turns.filter((t) => t.payment && !t.loading).length > 1;
+  const pendingBillable =
+    chatPayment !== null && BigInt(chatPayment.sessionBillable) > BigInt(0);
+  const showPendingFooter = wallet.sessionOpen && pendingBillable;
+  const settlement = wallet.lastSettlement;
 
   return (
     <aside className="chat-sidebar" aria-label="Agent steps">
@@ -34,7 +39,7 @@ export default function AgentStepsSidebar({ turns, activeTurnId }: Props) {
                 <span className="step-dot" />
                 <div>
                   <strong>Running metered tools…</strong>
-                  <span className="step-detail">Multi-provider calls — settlement at end</span>
+                  <span className="step-detail">Multi-provider calls — settle when done</span>
                 </div>
               </li>
             ) : (
@@ -77,9 +82,35 @@ export default function AgentStepsSidebar({ turns, activeTurnId }: Props) {
         </div>
       )}
 
-      {showChatTotal && chatPayment && chatPayment.sessionCalls > 0 && (
+      {settlement && (
+        <footer className="steps-footer steps-footer-settled">
+          <strong>Settled on-chain</strong>
+          <div className="steps-footer-row">
+            <span>Paid to provider</span>
+            <span>{formatBillable(settlement.settledAmount, settlement.tokenSymbol)}</span>
+          </div>
+          <div className="steps-footer-row">
+            <span>Refunded from escrow</span>
+            <span>{formatBillable(settlement.refundedAmount, settlement.tokenSymbol)}</span>
+          </div>
+          <div className="steps-footer-row steps-footer-total">
+            <span>{settlement.sessionCalls} metered call(s)</span>
+            <span>{formatBillable(settlement.sessionBillable, settlement.tokenSymbol)}</span>
+          </div>
+          <a
+            className="steps-settle-link"
+            href={settlement.explorerUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            View settle tx
+          </a>
+        </footer>
+      )}
+
+      {showPendingFooter && chatPayment && (
         <footer className="steps-footer">
-          <strong>Chat total</strong>
+          <strong>Pending settlement</strong>
           {chatPayment.providers.map((p) => (
             <div key={p.providerId} className="steps-footer-row">
               <span>{p.providerLabel}</span>
@@ -89,12 +120,23 @@ export default function AgentStepsSidebar({ turns, activeTurnId }: Props) {
             </div>
           ))}
           <div className="steps-footer-row steps-footer-total">
-            <span>Pending settlement</span>
+            <span>Accrued this session</span>
             <span>
               {chatPayment.sessionCalls} call(s) ·{" "}
               {formatBillable(chatPayment.sessionBillable, chatPayment.tokenSymbol)}
             </span>
           </div>
+          <button
+            type="button"
+            className="steps-settle-btn"
+            disabled={wallet.settling}
+            onClick={() => {
+              void wallet.settleSession().catch(() => undefined);
+            }}
+          >
+            {wallet.settling ? "Settling on-chain…" : "Settle on-chain"}
+          </button>
+          {wallet.error && <p className="steps-footer-note">{wallet.error}</p>}
         </footer>
       )}
     </aside>

@@ -1,11 +1,15 @@
 import express from "express";
 import type { Express } from "express";
+import type { PaymentRequirements } from "@x402/core/types";
 import { deserializeVoucher, isWireVoucher } from "@drongo/agent-core";
 import type { ToolboxService, ToolCall } from "@drongo/agent-core";
 import type { ProviderServerConfig } from "./config.js";
-import { build402Response, buildPaymentRequirements, readPaymentHeader } from "./x402.js";
-import { createPaymentVerifier } from "./payments.js";
-import type { PaymentVerifier } from "./payments.js";
+import { openResourceUrl, readPaymentHeader } from "./x402.js";
+import {
+  buildOpenChannelPaymentRequired,
+  createProviderX402Server,
+  settleOpenChannelPayment,
+} from "./x402-resource.js";
 import { ChannelRegistry } from "./channels.js";
 import { TOOL_SPECS } from "./tools.js";
 
@@ -13,51 +17,108 @@ export interface ProviderServerDeps {
   config: ProviderServerConfig;
   /** The priced tools this provider serves. */
   toolbox: ToolboxService;
-  /** Override the payment verifier (defaults from config: mock vs facilitator). */
-  verifier?: PaymentVerifier;
   /** Override the channel registry (defaults to a fresh in-memory one). */
   registry?: ChannelRegistry;
 }
 
 /**
- * The provider's x402 HTTP resource server. It lives INSIDE agents/provider
- * because the provider is the thing exposing the endpoint. Flow per the x402
- * spec: a bare `POST /agent/open` returns `402 Payment Required` with the
- * accepted `PaymentRequirements`; the consumer retries with an `X-PAYMENT`
- * header, the server verifies (+ settles) it, and the metered channel opens.
- * Thereafter each `POST /channels/:id/call` carries the consumer's cumulative
- * voucher, which the ProviderMeter validates before the tool runs. Settlement
- * itself is one ZK proof the consumer builds at close — the provider only meters.
+ * The provider's x402 HTTP resource server. Flow per the x402 spec:
+ * `POST /agent/open` without payment → `402 Payment Required`;
+ * retry with `PAYMENT-SIGNATURE` → facilitator verify+settle → metered channel opens.
  */
 export function createProviderServer(deps: ProviderServerDeps): Express {
   const { config, toolbox } = deps;
-  const verifier = deps.verifier ?? createPaymentVerifier(config);
   const registry = deps.registry ?? new ChannelRegistry();
+  const x402Server = createProviderX402Server(config);
+  let openRequirements: PaymentRequirements | undefined;
 
   const app = express();
   app.use(express.json({ limit: "1mb" }));
+  app.use((req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", config.corsOrigin);
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type, PAYMENT-SIGNATURE, X-PAYMENT, PAYMENT-REQUIRED",
+    );
+    res.setHeader(
+      "Access-Control-Expose-Headers",
+      "PAYMENT-REQUIRED, PAYMENT-RESPONSE, PAYMENT-SIGNATURE, X-PAYMENT",
+    );
+    if (req.method === "OPTIONS") {
+      res.status(204).end();
+      return;
+    }
+    next();
+  });
 
-  // Agent card — advertises the tools and the x402 open endpoint.
   app.get("/.well-known/agent-card.json", (_req, res) => {
     res.json({
       name: "drongo-provider",
       description: "Metered multi-tool provider, settled via Drongo ZK payment channels.",
-      x402: { open: "/agent/open", requirements: buildPaymentRequirements(config) },
+      x402: { open: "/agent/open", network: config.network, asset: config.asset, payTo: config.payTo },
       tools: TOOL_SPECS,
     });
   });
 
-  // x402-gated channel open: 402 without a payment header, else verify + register.
   app.post("/agent/open", async (req, res) => {
+    const resourceUrl = openResourceUrl(config, req.headers.host);
     const payment = readPaymentHeader(req.headers as Record<string, unknown>);
+
     if (payment === null) {
-      res.status(402).json(build402Response(config));
+      try {
+        const unpaid = await buildOpenChannelPaymentRequired(x402Server, config, { resourceUrl });
+        openRequirements = unpaid.body.accepts[0];
+        res.status(unpaid.status).set(unpaid.headers).json(unpaid.body);
+      } catch (error) {
+        const message = (error as Error).message;
+        const missingFacilitator =
+          message.includes("no supported payment kinds") ||
+          message.includes("Facilitator getSupported failed");
+        res.status(missingFacilitator ? 503 : 500).json({
+          ok: false,
+          error: missingFacilitator
+            ? "x402 facilitator unavailable — set X402_FACILITATOR_API_KEY (https://channels.openzeppelin.com/testnet/gen)"
+            : message,
+        });
+      }
       return;
     }
 
-    const verified = await verifier.verifyAndSettle(payment, buildPaymentRequirements(config));
-    if (!verified.ok) {
-      res.status(402).json({ ...build402Response(config), error: `payment rejected: ${verified.reason}` });
+    if (openRequirements === undefined) {
+      try {
+        const unpaid = await buildOpenChannelPaymentRequired(x402Server, config, { resourceUrl });
+        openRequirements = unpaid.body.accepts[0];
+      } catch (error) {
+        const message = (error as Error).message;
+        const missingFacilitator =
+          message.includes("no supported payment kinds") ||
+          message.includes("Facilitator getSupported failed");
+        res.status(missingFacilitator ? 503 : 500).json({
+          ok: false,
+          error: missingFacilitator
+            ? "x402 facilitator unavailable — set X402_FACILITATOR_API_KEY (https://channels.openzeppelin.com/testnet/gen)"
+            : message,
+        });
+        return;
+      }
+    }
+
+    const requirements = openRequirements;
+    if (requirements === undefined) {
+      res.status(500).json({ ok: false, error: "payment requirements unavailable" });
+      return;
+    }
+
+    let settlementTx: string;
+    try {
+      const settled = await settleOpenChannelPayment(x402Server, payment, requirements);
+      settlementTx = settled.settlementTx;
+    } catch (error) {
+      res.status(402).json({
+        ok: false,
+        error: `payment rejected: ${(error as Error).message}`,
+      });
       return;
     }
 
@@ -79,16 +140,21 @@ export function createProviderServer(deps: ProviderServerDeps): Express {
       return;
     }
 
-    registry.open({
-      channelId: BigInt(body.channelId),
-      consumerPublicKey: { x: BigInt(body.consumerPublicKey.x), y: BigInt(body.consumerPublicKey.y) },
-      rate: BigInt(body.rate),
-      escrow: BigInt(body.escrow),
-    });
-    res.json({ ok: true, channelId: body.channelId, settlementTx: verified.settlementTx });
+    try {
+      registry.open({
+        channelId: BigInt(body.channelId),
+        consumerPublicKey: { x: BigInt(body.consumerPublicKey.x), y: BigInt(body.consumerPublicKey.y) },
+        rate: BigInt(body.rate),
+        escrow: BigInt(body.escrow),
+      });
+    } catch (error) {
+      res.status(400).json({ ok: false, error: (error as Error).message });
+      return;
+    }
+
+    res.json({ ok: true, channelId: body.channelId, settlementTx });
   });
 
-  // Metered call: validate the cumulative voucher, then run the tool.
   app.post("/channels/:id/call", async (req, res) => {
     const channelId = String(req.params.id);
     const meter = registry.get(channelId);
@@ -105,7 +171,6 @@ export function createProviderServer(deps: ProviderServerDeps): Express {
 
     const receipt = await meter.receive(deserializeVoucher(body.voucher));
     if (!receipt.accepted) {
-      // A metering refusal is a valid 200 response — the consumer reads `reason`.
       res.json({
         served: false,
         reason: receipt.reason,
@@ -131,8 +196,6 @@ export function createProviderServer(deps: ProviderServerDeps): Express {
     });
   });
 
-  // Finalize: the consumer builds the settlement proof locally from its last
-  // voucher, so the server only releases the in-memory meter here.
   app.post("/channels/:id/finalize", (req, res) => {
     const channelId = String(req.params.id);
     const finalUnits = registry.get(channelId)?.latestVoucher?.totalUnits.toString() ?? "0";

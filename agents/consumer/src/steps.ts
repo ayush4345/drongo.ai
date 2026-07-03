@@ -93,7 +93,7 @@ export function buildAgentSteps(
   const usedProviders = payment.providers.filter((p) => p.turnCalls > 0).length;
   steps.push({
     kind: "payment_total",
-    label: "Turn payment (metered, settles on session close)",
+    label: "Turn payment (metered — settle on-chain when done)",
     detail:
       payment.turnCalls > 0
         ? `${payment.turnCalls} call(s) across ${usedProviders} provider(s) · ${turnBillable} ${payment.tokenSymbol}`

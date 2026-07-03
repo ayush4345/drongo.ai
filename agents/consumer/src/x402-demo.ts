@@ -5,12 +5,12 @@ import { config as loadEnv } from "dotenv";
 import { computeRateCommitment, deriveConsumerPublicKey } from "@drongo/proving-setup";
 import {
   X402ServiceChannel,
-  MockChainClient,
-  realChainFromEnv,
+  createKeypairX402Signer,
+  requireChainFromEnv,
   parseUnits,
   formatUnits,
 } from "@drongo/agent-core";
-import type { ChainClient, ChannelTerms, ToolCall, ToolResult } from "@drongo/agent-core";
+import type { ChannelTerms, ToolCall, ToolResult } from "@drongo/agent-core";
 import { TOOL_SPECS } from "@drongo/agent-provider";
 import { ServiceAgent } from "./agent.js";
 import { StubAgentBrain } from "./stub-agent.js";
@@ -50,16 +50,12 @@ async function main(): Promise<void> {
   const rate = parseUnits(process.env.RATE ?? "0.0001"); // PRIVATE per-call rate
   const escrow = parseUnits(process.env.ESCROW ?? "0.01"); // public escrow ceiling
 
-  const real = realChainFromEnv();
-  if (!real) {
-    console.log("note: MOCK mode — DEPOSITOR_SECRET is not set in the environment.");
-  }
-  const chain: ChainClient = real?.chain ?? new MockChainClient();
-  const mode = real ? "REAL Soroban (Stellar testnet)" : "mock (offline)";
+  const real = requireChainFromEnv();
+  const chain = real.chain;
 
-  const depositorPayload = real?.depositorPayload ?? randomBytes(32);
-  const providerPayload = real?.providerPayload ?? randomBytes(32);
-  const tokenPayload = real?.tokenPayload ?? randomBytes(32);
+  const depositorPayload = real.depositorPayload;
+  const providerPayload = real.providerPayload;
+  const tokenPayload = real.tokenPayload;
 
   const terms: ChannelTerms = {
     channelId: randField(),
@@ -79,11 +75,9 @@ async function main(): Promise<void> {
   // ── OPEN (escrow on-chain) ────────────────────────────────────────────
   console.log("═══ OPEN CHANNEL ═══");
   console.log(`  provider (x402):   ${providerUrl}`);
-  console.log(`  settlement chain:  ${mode}`);
-  if (real) {
-    console.log(`  settlement token:  ${symbol}  (${real.tokenId})`);
-    console.log(`  addresses:         ${real.label}`);
-  }
+  console.log(`  settlement chain:  REAL Soroban (Stellar testnet)`);
+  console.log(`  settlement token:  ${symbol}  (${real.tokenId})`);
+  console.log(`  addresses:         ${real.label}`);
   console.log(`  rate (PRIVATE):    ${formatUnits(rate)} ${symbol} / call`);
   console.log(`  escrow (public):   ${formatUnits(escrow)} ${symbol}`);
   console.log(`  rate commitment:   ${rateCommitment.toString().slice(0, 16)}…  (Poseidon(rate, blind))`);
@@ -103,7 +97,7 @@ async function main(): Promise<void> {
   const channel = await X402ServiceChannel.open<ToolCall, ToolResult>({
     providerUrl,
     terms,
-    paymentSignature: process.env.X402_PAYMENT_SIGNATURE,
+    signer: createKeypairX402Signer(process.env.DEPOSITOR_SECRET!),
   });
   console.log(`  x402 open:         paid + metered channel established with remote provider`);
 
@@ -123,7 +117,7 @@ async function main(): Promise<void> {
   console.log(`  answer: ${answer}`);
 
   // ── SETTLE (one ZK proof, built locally from the final voucher) ───────
-  console.log(`\n═══ SETTLE — one on-chain settlement (${mode}) ═══`);
+  console.log(`\n═══ SETTLE — one on-chain settlement (Stellar testnet) ═══`);
   const served = calls.filter((c) => c.served).length;
   const settlement = await channel.close();
   const settled = await chain.settle({

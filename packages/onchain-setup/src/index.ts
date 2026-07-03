@@ -1,5 +1,6 @@
 export {
   SOROBAN_TESTNET,
+  SLATE_TESTNET_CONTRACTS,
   assertSorobanConfig,
   sorobanConfigFromEnv,
   type SorobanConfig,

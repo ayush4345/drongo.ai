@@ -15,6 +15,6 @@ export * from "./tools.js";
 
 export * from "./config.js";
 export * from "./x402.js";
-export * from "./payments.js";
+export * from "./x402-resource.js";
 export * from "./channels.js";
 export * from "./server.js";

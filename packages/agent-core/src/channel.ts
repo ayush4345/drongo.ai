@@ -274,14 +274,8 @@ export class ServiceChannel<Req, Res> implements MeteredServiceChannel<Req, Res>
       voucher: { consumerPublicKey: final.consumerPublicKey, signature: final.signature },
     });
 
-    console.log("Settlement inputs:", inputs);
-
     const proof = await generateSettlementProof(inputs);
-
-    console.log("Proof:", proof);
-
     const serialized = serializeSettlement(proof);
-    console.log("Serialized:", serialized);
     return { inputs, proof, serialized };
   }
 }

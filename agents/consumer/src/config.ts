@@ -9,8 +9,6 @@ export interface ConsumerServerConfig {
   rate: string;
   /** Escrow ceiling in settlement token base units. */
   escrow: string;
-  /** x402 payment authorization presented at channel open (mock by default). */
-  paymentSignature?: string;
 }
 
 export function readConsumerServerConfig(env: NodeJS.ProcessEnv = process.env): ConsumerServerConfig {
@@ -20,6 +18,5 @@ export function readConsumerServerConfig(env: NodeJS.ProcessEnv = process.env): 
     corsOrigin: env.CORS_ORIGIN ?? "http://localhost:3000",
     rate: env.RATE ?? "0.0001",
     escrow: env.ESCROW ?? "0.01",
-    paymentSignature: env.X402_PAYMENT_SIGNATURE,
   };
 }

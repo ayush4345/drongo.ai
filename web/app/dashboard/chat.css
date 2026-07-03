@@ -254,6 +254,45 @@ body:has(.chat-shell) {
   color: #94948d;
 }
 
+.steps-settle-btn {
+  margin-top: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid rgba(91, 33, 182, 0.2);
+  border-radius: 8px;
+  background: #5b21b6;
+  color: #fff;
+  font-family: var(--sans), system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.steps-settle-btn:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.steps-settle-link {
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #5b21b6;
+  text-decoration: none;
+}
+
+.steps-settle-link:hover {
+  text-decoration: underline;
+}
+
+.steps-footer-settled {
+  background: rgba(236, 253, 245, 0.95);
+}
+
+.steps-footer-settled strong {
+  color: #047857;
+}
+
 .chat-header {
   display: flex;
   align-items: center;
@@ -264,6 +303,39 @@ body:has(.chat-shell) {
   padding: 8px 16px;
   border-bottom: 1px solid rgba(34, 34, 30, 0.08);
   background: rgba(255, 255, 253, 0.7);
+}
+
+.chat-wallet {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  padding: 6px 10px;
+  border: 1px solid rgba(34, 34, 30, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 253, 0.9);
+  color: #20201d;
+  font-family: var(--sans), system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chat-wallet:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.chat-wallet .pip {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #c4c4bc;
+}
+
+.chat-wallet .pip-live {
+  background: #34e6c0;
+  box-shadow: 0 0 0 3px rgba(52, 230, 192, 0.18);
 }
 
 .chat-title {

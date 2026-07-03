@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { useWallet } from "../../lib/wallet-context";
 import {
   type AgentStep,
   type AgentTurn,
@@ -76,7 +77,7 @@ function buildFallbackSteps(
   const usedProviders = p.providers.filter((prov) => prov.turnCalls > 0).length;
   steps.push({
     kind: "payment_total",
-    label: "Turn payment (metered, settles on session close)",
+    label: "Turn payment (metered — settle on-chain when done)",
     detail:
       p.turnCalls > 0
         ? `${p.turnCalls} call(s) across ${usedProviders} provider(s) · ${formatBillable(p.turnBillable, p.tokenSymbol)}`
@@ -103,6 +104,7 @@ function resizeTextarea(el: HTMLTextAreaElement) {
 }
 
 export default function ChatPanel({ onTurnStart, onTurnComplete }: Props) {
+  const wallet = useWallet();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<"ready" | "loading" | "error">("ready");
   const [statusNote, setStatusNote] = useState("Ready");
@@ -144,6 +146,27 @@ export default function ChatPanel({ onTurnStart, onTurnComplete }: Props) {
     if (!trimmed || sendingRef.current || status === "loading") return;
 
     sendingRef.current = true;
+    try {
+      if (!wallet.sessionOpen) {
+        setStatus("loading");
+        setStatusNote("Opening x402 channel…");
+        if (!wallet.address) {
+          await wallet.connect();
+        }
+        await wallet.openSession();
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to open metered channel";
+      setStatus("error");
+      setStatusNote("Channel error");
+      setMessages((prev) => [
+        ...prev,
+        { id: uid(), role: "assistant", content: `Could not open metered channel: ${msg}` },
+      ]);
+      sendingRef.current = false;
+      return;
+    }
+
     const turnId = uid();
     setMessages((prev) => [...prev, { id: uid(), role: "user", content: trimmed }]);
     clearInput();
@@ -235,6 +258,29 @@ export default function ChatPanel({ onTurnStart, onTurnComplete }: Props) {
           <span className="eyebrow">Chatbot</span>
           <span className="chat-heading">Agent chat</span>
         </div>
+        <button
+          type="button"
+          className="chat-wallet"
+          disabled={wallet.connecting}
+          onClick={() => {
+            if (wallet.address && !wallet.sessionOpen) {
+              void wallet.openSession().catch(() => undefined);
+              return;
+            }
+            if (!wallet.address) {
+              void wallet.connect().catch(() => undefined);
+            }
+          }}
+        >
+          <span className={`pip${wallet.sessionOpen ? " pip-live" : ""}`} />
+          {wallet.connecting
+            ? "Connecting…"
+            : wallet.sessionOpen && wallet.shortAddress
+              ? wallet.shortAddress
+              : wallet.shortAddress
+                ? `${wallet.shortAddress} · open channel`
+                : "Connect Freighter"}
+        </button>
         <span className={`status${status !== "ready" ? ` status-${status}` : ""}`}>{statusNote}</span>
       </header>
 
@@ -243,12 +289,17 @@ export default function ChatPanel({ onTurnStart, onTurnComplete }: Props) {
           <div className="chat-empty" aria-label="Empty conversation">
             <h2>What can I help with?</h2>
             <p>
-              Ask about weather, crypto prices, or translations — the agent picks paid tools and
-              meters each call over x402.
+              Ask about weather, crypto prices, or translations — connect Freighter, pay the x402
+              channel-open fee, then the agent meters each call.
             </p>
             {agentOnline === false && (
               <p className="chat-offline">
-                Agent offline. Start the provider and consumer servers, then refresh.
+                Agent offline. Start the provider and consumer servers, connect your wallet, then refresh.
+              </p>
+            )}
+            {wallet.address && !wallet.sessionOpen && (
+              <p className="chat-offline">
+                Wallet connected — send a message to sign the x402 channel-open payment in Freighter.
               </p>
             )}
           </div>

@@ -8,15 +8,18 @@ import type { ConsumerPublicKey, Voucher } from "@drongo/proving-setup";
 import { ConsumerMeter } from "./channel.js";
 import type { CallOutcome, ChannelTerms, MeteredServiceChannel, SettlementResult } from "./channel.js";
 import { serializeVoucher } from "./voucher-wire.js";
-import { fetchWithManualX402, type FetchLike } from "./x402-client.js";
+import type { ClientStellarSigner } from "@x402/stellar";
+import { fetchWithManualX402 } from "./x402-client.js";
 
 export interface X402ChannelOptions {
   /** Base URL of the remote provider (e.g. http://localhost:4021). */
   providerUrl: string;
   terms: ChannelTerms;
-  fetchImpl?: FetchLike;
-  /** x402 payment authorization presented at open (mock by default). */
-  paymentSignature?: string;
+  fetchImpl?: typeof fetch;
+  /** Stellar signer for the x402 channel-open payment. */
+  signer?: ClientStellarSigner;
+  /** Pre-built payment header from a browser wallet (skips local signing). */
+  paymentHeader?: string;
   /** Units signed per call (defaults to 1). */
   unitsPerCall?: bigint;
 }
@@ -43,7 +46,7 @@ export class X402ServiceChannel<Req, Res> implements MeteredServiceChannel<Req, 
   readonly #baseUrl: string;
   readonly #terms: ChannelTerms;
   readonly #consumer: ConsumerMeter;
-  readonly #fetch: FetchLike;
+  readonly #fetch: typeof fetch;
   readonly #unitsPerCall: bigint;
   #lastAccepted: Voucher | undefined;
 
@@ -52,7 +55,7 @@ export class X402ServiceChannel<Req, Res> implements MeteredServiceChannel<Req, 
     terms: ChannelTerms,
     consumer: ConsumerMeter,
     consumerPublicKey: ConsumerPublicKey,
-    fetchImpl: FetchLike,
+    fetchImpl: typeof fetch,
     unitsPerCall: bigint,
   ) {
     this.#baseUrl = baseUrl;
@@ -82,7 +85,8 @@ export class X402ServiceChannel<Req, Res> implements MeteredServiceChannel<Req, 
         }),
       },
       fetchImpl,
-      paymentSignature: options.paymentSignature,
+      signer: options.signer,
+      paymentHeader: options.paymentHeader,
     });
     if (!res.ok) throw new Error(`x402 open failed: HTTP ${res.status}`);
     await res.json().catch(() => undefined);

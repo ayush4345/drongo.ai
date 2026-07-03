@@ -1,11 +1,13 @@
 import { Keypair, Address, Asset } from "@stellar/stellar-sdk";
-import { sorobanConfigFromEnv, assertSorobanConfig } from "@drongo/onchain-setup";
+import { sorobanConfigFromEnv, assertSorobanConfig, SLATE_TESTNET_CONTRACTS } from "@drongo/onchain-setup";
 import { SorobanChainClient } from "./chain.js";
 import type { ChainClient } from "./chain.js";
 
 /** Stellar testnet USDC SEP-41 contract — an alternative settlement asset. */
 export const USDC_TESTNET_CONTRACT_ID =
   "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA";
+
+export { SLATE_TESTNET_CONTRACTS } from "@drongo/onchain-setup";
 
 /** A real, configured chain client plus the 32-byte address payloads it binds. */
 export interface RealChainSetup {
@@ -83,4 +85,20 @@ export function realChainFromEnv(env: NodeJS.ProcessEnv = process.env): RealChai
     tokenId,
     label: `depositor=${depositorPublic.slice(0, 6)}… provider=${providerPublic.slice(0, 6)}… token=${tokenId.slice(0, 6)}…`,
   };
+}
+
+/**
+ * Like {@link realChainFromEnv} but throws with a clear message when the
+ * environment is not configured for on-chain settlement.
+ */
+export function requireChainFromEnv(env: NodeJS.ProcessEnv = process.env): RealChainSetup {
+  const setup = realChainFromEnv(env);
+  if (setup === null) {
+    throw new Error(
+      "DEPOSITOR_SECRET is required for on-chain settlement. " +
+        "Set it in the repo-root .env along with the STELLAR_* contract IDs " +
+        "(defaults are baked in for testnet).",
+    );
+  }
+  return setup;
 }

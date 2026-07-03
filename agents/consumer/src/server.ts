@@ -1,6 +1,6 @@
 import express from "express";
 import type { Express } from "express";
-import { realChainFromEnv } from "@drongo/agent-core";
+import { requireChainFromEnv } from "@drongo/agent-core";
 import type { AgentSession } from "./session.js";
 import type { ConsumerServerConfig } from "./config.js";
 import { buildAgentSteps } from "./steps.js";
@@ -30,7 +30,7 @@ export function createConsumerServer(deps: ConsumerServerDeps): Express {
   app.use((req, res, next) => {
     res.setHeader("Access-Control-Allow-Origin", config.corsOrigin);
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, PAYMENT-SIGNATURE, X-PAYMENT");
     if (req.method === "OPTIONS") {
       res.status(204).end();
       return;
@@ -39,7 +39,7 @@ export function createConsumerServer(deps: ConsumerServerDeps): Express {
   });
 
   app.get("/health", (_req, res) => {
-    const real = realChainFromEnv();
+    const real = requireChainFromEnv();
     res.json({
       ok: session.ready,
       provider: providerInfo(config),
@@ -50,17 +50,75 @@ export function createConsumerServer(deps: ConsumerServerDeps): Express {
         label: meta.label,
       })),
       brain: process.env.OPENAI_API_KEY ? "openai" : "stub",
-      settlementMode: real ? "stellar" : "mock",
-      settlementNote: real
-        ? "Calls are metered off-chain; one ZK proof settles on-chain when the consumer stops."
-        : "Mock mode — calls are metered but no real on-chain payment without DEPOSITOR_SECRET.",
+      settlementMode: "stellar",
+      settlementNote:
+        "Calls are metered off-chain; POST /session/settle submits one ZK proof on-chain.",
+      walletRequired: !session.ready,
       payment: session.getPaymentSummary(),
+      chain: real.label,
     });
+  });
+
+  app.get("/session/prepare", async (_req, res) => {
+    if (session.ready) {
+      res.status(409).json({ ok: false, error: "session already open" });
+      return;
+    }
+    try {
+      const prepared = await session.prepare();
+      res.json({ ok: true, ...prepared, providerUrl: config.providerUrl });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: (error as Error).message });
+    }
+  });
+
+  app.post("/session/open", async (req, res) => {
+    if (session.ready) {
+      res.json({ ok: true, alreadyOpen: true });
+      return;
+    }
+
+    const body = req.body as { paymentHeader?: unknown };
+    const headerFromBody =
+      typeof body.paymentHeader === "string" && body.paymentHeader.trim().length > 0
+        ? body.paymentHeader
+        : undefined;
+    const headerFromReq = (() => {
+      const h = req.headers["payment-signature"] ?? req.headers["x-payment"];
+      return typeof h === "string" && h.trim().length > 0 ? h : undefined;
+    })();
+
+    try {
+      await session.initialize({ paymentHeader: headerFromBody ?? headerFromReq });
+      res.json({ ok: true });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ ok: false, error: msg });
+    }
+  });
+
+  app.post("/session/settle", async (_req, res) => {
+    if (!session.ready) {
+      res.status(409).json({ ok: false, error: "no open session to settle" });
+      return;
+    }
+
+    try {
+      const result = await session.settle();
+      res.json(result);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ ok: false, error: msg });
+    }
   });
 
   app.post("/chat", async (req, res) => {
     if (!session.ready) {
-      res.status(503).json({ ok: false, error: "agent session not ready" });
+      res.status(503).json({
+        ok: false,
+        error: "agent session not ready — open a metered channel first",
+        walletRequired: true,
+      });
       return;
     }
 

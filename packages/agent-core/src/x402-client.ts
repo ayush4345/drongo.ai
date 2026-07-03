@@ -1,49 +1,62 @@
-export type FetchLike = typeof fetch;
+import { decodePaymentSignatureHeader } from "@x402/core/http";
+import type { ClientStellarSigner } from "@x402/stellar";
+import { createStellarX402Fetch, type FetchLike } from "./x402-stellar.js";
+
+export type { FetchLike };
 
 export interface PaidFetchInput {
   url: string;
   init?: RequestInit;
   fetchImpl?: FetchLike;
-  /** Payment authorization to present on the retry. Mock value by default. */
-  paymentSignature?: string;
+  /** Stellar signer used to satisfy x402 `402` responses (auth-entry signing). */
+  signer?: ClientStellarSigner;
+  /** Pre-built `PAYMENT-SIGNATURE` / `X-PAYMENT` header from a browser wallet. */
+  paymentHeader?: string;
+}
+
+function headersToRecord(headers: RequestInit["headers"]): Record<string, string> {
+  if (headers === undefined) return {};
+  if (headers instanceof Headers) return Object.fromEntries(headers.entries());
+  if (Array.isArray(headers)) return Object.fromEntries(headers);
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    if (typeof value === "string") out[key] = value;
+  }
+  return out;
 }
 
 /**
- * Minimal x402 client: make the request, and if it comes back `402`, retry once
- * with a base64 `X-PAYMENT` header per the x402 spec. For local/demo runs the
- * payload carries a mock authorization; a real Stellar Soroban-auth entry would
- * go in `payload` once a facilitator is wired in.
+ * x402 client for Stellar: retries once on `402` with a signed payment header.
+ * Uses `@x402/fetch` + `ExactStellarScheme` when a signer is provided, or forwards
+ * a wallet-built payment header when supplied from the browser.
  */
 export async function fetchWithManualX402({
   url,
   init,
   fetchImpl = fetch,
-  paymentSignature = "mock_payment_signature",
+  signer,
+  paymentHeader,
 }: PaidFetchInput): Promise<Response> {
-  const first = await fetchImpl(url, init);
-  if (first.status !== 402) return first;
+  if (paymentHeader !== undefined && paymentHeader.trim().length > 0) {
+    const first = await fetchImpl(url, init);
+    if (first.status !== 402) return first;
+    return fetchImpl(url, {
+      ...init,
+      headers: {
+        ...headersToRecord(init?.headers),
+        "PAYMENT-SIGNATURE": paymentHeader,
+        "X-PAYMENT": paymentHeader,
+      },
+    });
+  }
 
-  await first.json().catch(() => undefined);
+  if (signer === undefined) {
+    throw new Error("x402 payment requires a Stellar signer or a pre-built payment header");
+  }
 
-  const xPayment = Buffer.from(
-    JSON.stringify({
-      x402Version: 1,
-      scheme: "exact",
-      network: "stellar:testnet",
-      payload: { authorization: paymentSignature },
-    }),
-  ).toString("base64");
-
-  return fetchImpl(url, {
-    ...init,
-    headers: { ...headersToRecord(init?.headers as HeaderInput), "X-PAYMENT": xPayment },
-  });
+  const paidFetch = createStellarX402Fetch(signer, { fetchImpl });
+  return paidFetch(url, init);
 }
 
-type HeaderInput = Record<string, string> | Array<[string, string]> | undefined;
-
-function headersToRecord(headers: HeaderInput): Record<string, string> {
-  if (headers === undefined) return {};
-  if (Array.isArray(headers)) return Object.fromEntries(headers);
-  return headers;
-}
+/** Decode a base64 x402 payment header into a structured payload (for server-side verify). */
+export { decodePaymentSignatureHeader };

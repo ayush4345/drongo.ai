@@ -5,13 +5,12 @@ import { config as loadEnv } from "dotenv";
 import { computeRateCommitment } from "@drongo/proving-setup";
 import {
   ServiceChannel,
-  MockChainClient,
-  realChainFromEnv,
+  requireChainFromEnv,
   parseUnits,
   formatUnits,
 } from "@drongo/agent-core";
 import { MeterDb } from "@drongo/agent-core/db";
-import type { ChainClient, ChannelTerms } from "@drongo/agent-core";
+import type { ChannelTerms } from "@drongo/agent-core";
 import { FetchHttpClient, buildToolbox, TOOL_SPECS } from "@drongo/agent-provider";
 import { ServiceAgent } from "./agent.js";
 import { StubAgentBrain } from "./stub-agent.js";
@@ -49,20 +48,12 @@ async function main(): Promise<void> {
   const rate = parseUnits(process.env.RATE ?? "0.0001"); // PRIVATE per-call rate
   const escrow = parseUnits(process.env.ESCROW ?? "0.01"); // public escrow ceiling
 
-  // Real Stellar settlement when DEPOSITOR_SECRET + contract IDs are configured;
-  // otherwise an in-memory mock so the demo always runs offline.
-  const real = realChainFromEnv();
-  if (!real) {
-    console.log("note: MOCK mode — DEPOSITOR_SECRET is not set in the environment.");
-  }
-  const chain: ChainClient = real?.chain ?? new MockChainClient();
-  const mode = real ? "REAL Soroban (Stellar testnet)" : "mock (offline)";
+  const real = requireChainFromEnv();
+  const chain = real.chain;
 
-  // The same 32-byte payloads must be bound into the proof AND used on-chain, so
-  // the contract's address checks in settle() match the proof's public signals.
-  const depositorPayload = real?.depositorPayload ?? randomBytes(32);
-  const providerPayload = real?.providerPayload ?? randomBytes(32);
-  const tokenPayload = real?.tokenPayload ?? randomBytes(32);
+  const depositorPayload = real.depositorPayload;
+  const providerPayload = real.providerPayload;
+  const tokenPayload = real.tokenPayload;
 
   const terms: ChannelTerms = {
     channelId: randField(),
@@ -91,11 +82,9 @@ async function main(): Promise<void> {
 
   // ── OPEN ──────────────────────────────────────────────────────────────
   console.log("═══ OPEN CHANNEL ═══");
-  console.log(`  settlement chain:  ${mode}`);
-  if (real) {
-    console.log(`  settlement token:  ${symbol}  (${real.tokenId})`);
-    console.log(`  addresses:         ${real.label}`);
-  }
+  console.log(`  settlement chain:  REAL Soroban (Stellar testnet)`);
+  console.log(`  settlement token:  ${symbol}  (${real.tokenId})`);
+  console.log(`  addresses:         ${real.label}`);
   console.log(`  services offered:  ${toolbox.toolNames().join(", ")}`);
   console.log(`  rate (PRIVATE):    ${formatUnits(rate)} ${symbol} / call`);
   console.log(`  escrow (public):   ${formatUnits(escrow)} ${symbol}`);
@@ -129,7 +118,7 @@ async function main(): Promise<void> {
   console.log(`  answer: ${answer}`);
 
   // ── SETTLE (one ZK proof, for the whole mixed session) ────────────────
-  console.log(`\n═══ SETTLE — one on-chain settlement (${mode}) ═══`);
+  console.log(`\n═══ SETTLE — one on-chain settlement (Stellar testnet) ═══`);
   const served = calls.filter((c) => c.served).length;
   const settlement = await channel.close(); // generates the real Groth16 proof
   const settled = await chain.settle({

@@ -80,7 +80,7 @@ export function gatewayStepDetail(gateway: { name: string; url: string }): strin
 export function formatBillable(raw: string, symbol: string): string {
   try {
     const n = BigInt(raw);
-    if (n === 0n) return `0 ${symbol}`;
+    if (n === BigInt(0)) return `0 ${symbol}`;
     return `${formatUnitsNumber(n)} ${symbol}`;
   } catch {
     return `${raw} ${symbol}`;
@@ -88,10 +88,10 @@ export function formatBillable(raw: string, symbol: string): string {
 }
 
 function formatUnitsNumber(value: bigint, decimals = 7): string {
-  const base = 10n ** BigInt(decimals);
+  const base = BigInt(10) ** BigInt(decimals);
   const whole = value / base;
   const frac = value % base;
-  if (frac === 0n) return whole.toString();
+  if (frac === BigInt(0)) return whole.toString();
   const fracStr = frac.toString().padStart(decimals, "0").replace(/0+$/, "");
   return `${whole}.${fracStr}`;
 }
