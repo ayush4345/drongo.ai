@@ -53,12 +53,25 @@ provider via `X402ServiceChannel`, meters each tool call over HTTP, and settles
 the whole mixed session with one proof. Set `OPENAI_API_KEY` to use the real
 LLM brain; otherwise the stub brain runs offline.
 
-## Settlement chain
+## Provider-advertised terms & one settlement
 
-Both demos settle to a `MockChainClient` by default (offline). Set
-`DEPOSITOR_SECRET` + the deployed contract IDs (see repo-root `.env`) to switch
-to **real Soroban** settlement on Stellar testnet — the settle tx then prints a
-`stellar.expert` explorer link.
+The **provider is the source of truth for its price.** On open, the consumer
+**discovers** the terms from the provider's `402` response — the per-unit
+**rate**, the **payTo** settlement address, and the **asset** — and accepts them
+(it no longer sends its own rate). The provider meters at its own advertised
+rate; the consumer only proposes the `ESCROW` ceiling.
+
+Those terms are persisted to a local **MeterDb** (`artifacts/metering.db`), and
+every accepted call updates the meter. The **consumer holds `DEPOSITOR_SECRET`**
+and makes all payments: it funds the escrow at open and, at shutdown, **reads
+the channel back from the MeterDb** and submits the single ZK settlement —
+paying the provider-advertised address. Only the Poseidon rate commitment goes
+on-chain, so the rate stays private.
+
+> The chat consumer server uses MeterDb (`node:sqlite`), so run it on **Node 22+**.
+> The provider server has no such requirement.
+
+`GET /health` echoes the discovered `providerTerms` (rate / address / asset).
 
 ## Run the chat UI (provider + consumer + web)
 
@@ -66,7 +79,7 @@ to **real Soroban** settlement on Stellar testnet — the settle tx then prints 
 # terminal 1 — provider x402 server (:4021)
 pnpm --filter @drongo/agent-provider serve
 
-# terminal 2 — consumer chat server (:4022)
+# terminal 2 — consumer chat server (:4022, Node 22+)
 pnpm --filter @drongo/agent-consumer serve
 
 # terminal 3 — Next.js chat UI (:3000)
@@ -78,8 +91,8 @@ via `POST /api/chat` → `POST http://localhost:4022/chat`. Set `AGENT_URL` if
 the consumer listens elsewhere. Set `OPENAI_API_KEY` for real LLM tool selection;
 otherwise the stub brain runs offline.
 
-On shutdown (Ctrl+C), the consumer server settles the metered channel with one
-ZK proof.
+On shutdown (Ctrl+C), the consumer server reads the channel from the MeterDb and
+settles it with one ZK proof, paying the provider-advertised address.
 
 ## Exposed
 
