@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Keypair, Address, Asset } from "@stellar/stellar-sdk";
 import { sorobanConfigFromEnv, assertSorobanConfig } from "@drongo/onchain-setup";
 import { SorobanChainClient } from "./chain.js";
@@ -23,6 +24,21 @@ export interface RealChainSetup {
 /** Strkey (G…/C…) → its raw 32-byte payload (the form the proof binds). */
 function strkeyToPayload(strkey: string): Uint8Array {
   return Uint8Array.from(Address.fromString(strkey).toBuffer());
+}
+
+/**
+ * Convert an address advertised by a provider (a Stellar strkey, G… or C…) into
+ * the 32-byte payload the settlement proof binds. If the string is not a valid
+ * strkey (e.g. a demo placeholder in mock mode), it falls back to a
+ * deterministic SHA-256 of the string so offline demos still produce consistent
+ * payloads with no real account.
+ */
+export function addressToPayload(address: string): Uint8Array {
+  try {
+    return strkeyToPayload(address);
+  } catch {
+    return Uint8Array.from(createHash("sha256").update(address).digest());
+  }
 }
 
 /**

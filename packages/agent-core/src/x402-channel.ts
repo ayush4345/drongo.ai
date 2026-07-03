@@ -7,8 +7,14 @@ import {
 import type { ConsumerPublicKey, Voucher } from "@drongo/proving-setup";
 import { ConsumerMeter } from "./channel.js";
 import type { CallOutcome, ChannelTerms, MeteredServiceChannel, SettlementResult } from "./channel.js";
+import type { MeterDb } from "./db.js";
 import { serializeVoucher } from "./voucher-wire.js";
-import { fetchWithManualX402, type FetchLike } from "./x402-client.js";
+import {
+  fetchWithManualX402,
+  discoverX402Requirements,
+  type FetchLike,
+  type X402Requirements,
+} from "./x402-client.js";
 
 export interface X402ChannelOptions {
   /** Base URL of the remote provider (e.g. http://localhost:4021). */
@@ -19,6 +25,14 @@ export interface X402ChannelOptions {
   paymentSignature?: string;
   /** Units signed per call (defaults to 1). */
   unitsPerCall?: bigint;
+  /** Persist the channel + per-call meter to a MeterDb (durable settlement). */
+  meterDb?: MeterDb;
+  /** On-chain rate commitment to persist alongside the channel. */
+  rateCommitment?: bigint;
+  /** The escrow-open tx hash to persist alongside the channel. */
+  openTx?: string;
+  /** Human label for the metered service (persisted). */
+  serviceName?: string;
 }
 
 interface CallResponseBody {
@@ -37,6 +51,9 @@ interface CallResponseBody {
  * It implements {@link MeteredServiceChannel}, so the same ServiceAgent drives
  * it exactly like the in-process channel — the LLM still picks which tool to
  * use, but now the provider is a separate service reached over the network.
+ *
+ * When a {@link MeterDb} is supplied it persists the channel on open and updates
+ * the meter on every accepted call, so a session can settle from durable state.
  */
 export class X402ServiceChannel<Req, Res> implements MeteredServiceChannel<Req, Res> {
   readonly consumerPublicKey: ConsumerPublicKey;
@@ -45,6 +62,7 @@ export class X402ServiceChannel<Req, Res> implements MeteredServiceChannel<Req, 
   readonly #consumer: ConsumerMeter;
   readonly #fetch: FetchLike;
   readonly #unitsPerCall: bigint;
+  readonly #meterDb: MeterDb | undefined;
   #lastAccepted: Voucher | undefined;
 
   private constructor(
@@ -54,6 +72,7 @@ export class X402ServiceChannel<Req, Res> implements MeteredServiceChannel<Req, 
     consumerPublicKey: ConsumerPublicKey,
     fetchImpl: FetchLike,
     unitsPerCall: bigint,
+    meterDb: MeterDb | undefined,
   ) {
     this.#baseUrl = baseUrl;
     this.#terms = terms;
@@ -61,9 +80,24 @@ export class X402ServiceChannel<Req, Res> implements MeteredServiceChannel<Req, 
     this.consumerPublicKey = consumerPublicKey;
     this.#fetch = fetchImpl;
     this.#unitsPerCall = unitsPerCall;
+    this.#meterDb = meterDb;
   }
 
-  /** Discover + x402-open a channel with the remote provider. */
+  /**
+   * Discover the provider's advertised x402 terms (rate, payTo address, asset)
+   * from its `402` response, WITHOUT paying. The consumer calls this first so it
+   * can accept the provider's rate and bind the provider's address into the
+   * channel before opening.
+   */
+  static async discoverTerms(
+    providerUrl: string,
+    fetchImpl: FetchLike = fetch,
+  ): Promise<X402Requirements | undefined> {
+    const baseUrl = providerUrl.replace(/\/$/, "");
+    return discoverX402Requirements(`${baseUrl}/agent/open`, fetchImpl);
+  }
+
+  /** x402-open a channel with the remote provider (retry with X-PAYMENT). */
   static async open<Req, Res>(options: X402ChannelOptions): Promise<X402ServiceChannel<Req, Res>> {
     const fetchImpl = options.fetchImpl ?? fetch;
     const baseUrl = options.providerUrl.replace(/\/$/, "");
@@ -77,7 +111,8 @@ export class X402ServiceChannel<Req, Res> implements MeteredServiceChannel<Req, 
         body: JSON.stringify({
           channelId: options.terms.channelId.toString(),
           consumerPublicKey: { x: consumerPublicKey.x.toString(), y: consumerPublicKey.y.toString() },
-          rate: options.terms.rate.toString(),
+          // The rate is the provider's own (advertised in the 402); the consumer
+          // proposes only the escrow ceiling.
           escrow: options.terms.escrow.toString(),
         }),
       },
@@ -87,6 +122,18 @@ export class X402ServiceChannel<Req, Res> implements MeteredServiceChannel<Req, 
     if (!res.ok) throw new Error(`x402 open failed: HTTP ${res.status}`);
     await res.json().catch(() => undefined);
 
+    // Persist the opened channel (terms + advertised recipient) so settlement can
+    // be driven from the meter DB later.
+    options.meterDb?.saveChannel({
+      terms: options.terms,
+      consumerPublicKey,
+      rateCommitment: options.rateCommitment,
+      lastAcceptedUnits: 0n,
+      halted: false,
+      openTx: options.openTx,
+      serviceName: options.serviceName,
+    });
+
     const consumer = new ConsumerMeter(options.terms.consumerPrivateKey, options.terms.channelId);
     return new X402ServiceChannel(
       baseUrl,
@@ -95,6 +142,7 @@ export class X402ServiceChannel<Req, Res> implements MeteredServiceChannel<Req, 
       consumerPublicKey,
       fetchImpl,
       options.unitsPerCall ?? 1n,
+      options.meterDb,
     );
   }
 
@@ -110,7 +158,10 @@ export class X402ServiceChannel<Req, Res> implements MeteredServiceChannel<Req, 
     );
     const body = (await res.json().catch(() => ({}))) as CallResponseBody;
     const served = res.ok && body.served === true;
-    if (served) this.#lastAccepted = voucher;
+    if (served) {
+      this.#lastAccepted = voucher;
+      this.#meterDb?.updateMeter(this.#terms.channelId, voucher.totalUnits, voucher, false);
+    }
 
     return {
       served,

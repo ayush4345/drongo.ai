@@ -47,3 +47,46 @@ function headersToRecord(headers: HeaderInput): Record<string, string> {
   if (Array.isArray(headers)) return Object.fromEntries(headers);
   return headers;
 }
+
+/**
+ * The x402 payment requirements a provider advertises in its `402` response
+ * (`accepts[0]`). `rate` is a Drongo extension: the provider's per-unit price in
+ * the settlement token's decimal units, which the consumer accepts as the
+ * channel rate.
+ */
+export interface X402Requirements {
+  scheme?: string;
+  network?: string;
+  maxAmountRequired?: string;
+  resource?: string;
+  description?: string;
+  mimeType?: string;
+  payTo?: string;
+  asset?: string;
+  rate?: string;
+  maxTimeoutSeconds?: number;
+}
+
+/**
+ * Discover a provider's x402 payment requirements by making an UNPAID request
+ * and reading `accepts[0]` from the `402` response. Returns undefined when the
+ * endpoint does not answer with 402 (e.g. it isn't x402-gated). This is how the
+ * consumer learns the provider's rate, settlement address and asset before
+ * agreeing to open a channel.
+ */
+export async function discoverX402Requirements(
+  url: string,
+  fetchImpl: FetchLike = fetch,
+): Promise<X402Requirements | undefined> {
+  const res = await fetchImpl(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ probe: true }),
+  });
+  if (res.status !== 402) {
+    await res.json().catch(() => undefined);
+    return undefined;
+  }
+  const body = (await res.json().catch(() => ({}))) as { accepts?: X402Requirements[] };
+  return body.accepts?.[0];
+}
