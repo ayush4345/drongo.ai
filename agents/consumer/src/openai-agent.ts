@@ -17,7 +17,7 @@ export class OpenAiAgentBrain implements AgentBrain {
   async decide(goal: string, tools: ToolSpec[], gathered: ToolResult[]): Promise<AgentDecision> {
     const apiKey = this.opts.apiKey ?? process.env.OPENAI_API_KEY;
     if (!apiKey) throw new Error("OPENAI_API_KEY not set");
-    const model = this.opts.model ?? process.env.OPENAI_MODEL ?? "gpt-4o-mini";
+    const model = this.opts.model ?? process.env.OPENAI_MODEL ?? "gpt-5.4-mini";
 
     const { default: OpenAI } = await import("openai");
     const client = new OpenAI({ apiKey });
