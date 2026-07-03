@@ -35,6 +35,44 @@ export type ProviderInfo = {
   url: string;
 };
 
+export type SettleStep = {
+  kind: "proof" | "verify" | "transfer" | "done" | "skipped";
+  label: string;
+  detail?: string;
+};
+
+export type SettleOutcome = {
+  ok: boolean;
+  settled: boolean;
+  reason?: string;
+  steps: SettleStep[];
+  settleTx?: string;
+  totalUnits?: string;
+  settlementAmount?: string;
+  escrow?: string;
+  tokenSymbol: string;
+  error?: string;
+};
+
+/** Lifecycle of the UI-driven settlement + re-open flow. */
+export type SettlePhase = "idle" | "settling" | "settled" | "opening" | "error";
+
+/** The stages the sidebar animates through while a settlement is in flight. */
+export const SETTLE_STAGES: { label: string; detail: string }[] = [
+  {
+    label: "Generating Groth16 settlement proof",
+    detail: "Building the 13-signal circuit input from the final voucher",
+  },
+  {
+    label: "Verifying proof on-chain",
+    detail: "meteredverifier pairing check · settlement ≤ escrow · nullifier",
+  },
+  {
+    label: "Executing split transfer",
+    detail: "Paying the provider, refunding remaining escrow to the depositor",
+  },
+];
+
 export type AgentTurn = {
   id: string;
   userMessage: string;

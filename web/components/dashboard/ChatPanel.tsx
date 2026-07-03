@@ -95,6 +95,10 @@ type ChatMessage = {
 type Props = {
   onTurnStart: (turn: AgentTurn) => void;
   onTurnComplete: (turn: AgentTurn) => void;
+  /** Lock the composer while the channel is being settled / reopened. */
+  disabled?: boolean;
+  /** Placeholder shown while disabled (defaults to a settling message). */
+  disabledLabel?: string;
 };
 
 function resizeTextarea(el: HTMLTextAreaElement) {
@@ -102,7 +106,12 @@ function resizeTextarea(el: HTMLTextAreaElement) {
   el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
 }
 
-export default function ChatPanel({ onTurnStart, onTurnComplete }: Props) {
+export default function ChatPanel({
+  onTurnStart,
+  onTurnComplete,
+  disabled = false,
+  disabledLabel = "Channel settling…",
+}: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<"ready" | "loading" | "error">("ready");
   const [statusNote, setStatusNote] = useState("Ready");
@@ -141,7 +150,7 @@ export default function ChatPanel({ onTurnStart, onTurnComplete }: Props) {
 
   async function sendMessage() {
     const trimmed = readInput().trim();
-    if (!trimmed || sendingRef.current || status === "loading") return;
+    if (!trimmed || sendingRef.current || status === "loading" || disabled) return;
 
     sendingRef.current = true;
     const turnId = uid();
@@ -229,7 +238,7 @@ export default function ChatPanel({ onTurnStart, onTurnComplete }: Props) {
   const empty = messages.length === 0;
 
   return (
-    <div className="chat-panel-layout">
+    <div className={`chat-panel-layout${disabled ? " chat-panel-disabled" : ""}`} aria-disabled={disabled}>
       <header className="chat-header">
         <div className="chat-title">
           <span className="eyebrow">Chatbot</span>
@@ -279,10 +288,10 @@ export default function ChatPanel({ onTurnStart, onTurnComplete }: Props) {
           id="chat-input"
           ref={textareaRef}
           name="message"
-          placeholder="Ask anything"
           autoComplete="off"
           rows={1}
-          disabled={status === "loading"}
+          disabled={status === "loading" || disabled}
+          placeholder={disabled ? disabledLabel : "Ask anything"}
           onInput={(e) => {
             resizeTextarea(e.currentTarget);
             if (status === "error") {
@@ -292,7 +301,7 @@ export default function ChatPanel({ onTurnStart, onTurnComplete }: Props) {
           }}
           onKeyDown={onKeyDown}
         />
-        <button type="submit" aria-label="Send message" disabled={status === "loading"}>
+        <button type="submit" aria-label="Send message" disabled={status === "loading" || disabled}>
           <span aria-hidden="true">↑</span>
         </button>
       </form>

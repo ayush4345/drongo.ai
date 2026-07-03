@@ -254,6 +254,163 @@ body:has(.chat-shell) {
   color: #94948d;
 }
 
+/* Aggregated chat total sits above the settlement footer (not bottom-anchored). */
+.steps-total {
+  flex: none;
+  padding: 12px 16px 10px;
+  border-top: 1px solid rgba(34, 34, 30, 0.08);
+  background: rgba(245, 243, 255, 0.9);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #50504a;
+}
+
+.steps-total strong {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #5b21b6;
+}
+
+/* Settlement controls — pinned to the very bottom of the sidebar. */
+.settle-footer {
+  gap: 10px;
+}
+
+.settle-btn {
+  margin-top: 2px;
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #7c3aed, #5b21b6);
+  color: #fff;
+  font: 700 13px/1 var(--sans), system-ui, sans-serif;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgba(91, 33, 182, 0.28);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
+}
+
+.settle-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(91, 33, 182, 0.34);
+}
+
+.settle-btn:active {
+  transform: translateY(0);
+}
+
+.settle-btn:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: 2px;
+}
+
+.settle-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+.settle-btn-new {
+  background: linear-gradient(180deg, #34c49f, #1f9c7c);
+  box-shadow: 0 6px 16px rgba(31, 156, 124, 0.28);
+}
+
+.settle-btn-new:hover {
+  box-shadow: 0 8px 20px rgba(31, 156, 124, 0.34);
+}
+
+.settle-btn-new:focus-visible {
+  outline-color: #1f9c7c;
+}
+
+.settle-stages {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settle-stage {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.settle-stage-dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: #c9bde8;
+}
+
+.settle-stage-done .settle-stage-dot {
+  background: #34c49f;
+  box-shadow: 0 0 0 3px rgba(52, 196, 159, 0.15);
+}
+
+.settle-stage-active .settle-stage-dot {
+  background: #7c3aed;
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.18);
+  animation: settle-pulse 1s ease-in-out infinite;
+}
+
+@keyframes settle-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.14);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(124, 58, 237, 0.06);
+  }
+}
+
+.settle-stage-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: #20201d;
+}
+
+.settle-stage-pending .settle-stage-label {
+  color: #9a99a3;
+  font-weight: 600;
+}
+
+.settle-stage-detail {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #74746d;
+}
+
+.settle-note {
+  font-size: 11px;
+  color: #74746d;
+}
+
+.settle-error {
+  font-size: 11px;
+  line-height: 1.4;
+  color: #b3261e;
+}
+
+/* Grayed-out composer while a settlement / re-open is in flight. */
+.chat-panel-disabled {
+  opacity: 0.55;
+  pointer-events: none;
+  filter: grayscale(0.2);
+}
+
 .chat-header {
   display: flex;
   align-items: center;
