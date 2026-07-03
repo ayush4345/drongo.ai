@@ -5,8 +5,11 @@ import {
   MockChainClient,
   realChainFromEnv,
   parseUnits,
+  addressToPayload,
+  settlementFromSnapshot,
 } from "@drongo/agent-core";
-import type { ChainClient, ChannelTerms, MeteredServiceChannel, ToolCall, ToolResult } from "@drongo/agent-core";
+import { MeterDb } from "@drongo/agent-core/db";
+import type { ChainClient, ChannelTerms, ToolCall, ToolResult, X402Requirements } from "@drongo/agent-core";
 import { TOOL_SPECS } from "@drongo/agent-provider";
 import { ServiceAgent } from "./agent.js";
 import type { AgentRunResult, ProviderSettlement, TurnPayment } from "./agent.js";
@@ -26,13 +29,18 @@ export interface ChatResult extends AgentRunResult {
 }
 
 /**
- * One metered x402 session: opens escrow + a remote provider channel once,
- * serves many chat turns over the same channel, and settles on shutdown.
+ * One metered x402 session. On open it DISCOVERS the provider's terms from the
+ * 402 (rate, settlement address, asset), accepts the provider's rate, funds the
+ * escrow with the consumer's DEPOSITOR_SECRET, persists the channel to a MeterDb,
+ * serves many chat turns over the same channel, and at shutdown reads the channel
+ * back from the DB and settles ONCE — paying the provider-advertised address.
  */
 export class AgentSession {
-  #channel: MeteredServiceChannel<ToolCall, ToolResult> | undefined;
+  #channel: X402ServiceChannel<ToolCall, ToolResult> | undefined;
   #chain: ChainClient | undefined;
   #terms: ChannelTerms | undefined;
+  #meterDb: MeterDb | undefined;
+  #advertised: X402Requirements | undefined;
   #ready = false;
   #busy = false;
   #sessionBillable = 0n;
@@ -46,6 +54,15 @@ export class AgentSession {
 
   get ready(): boolean {
     return this.#ready;
+  }
+
+  /** The provider terms discovered from the 402 (advertised rate/address/asset). */
+  getProviderTerms(): { rate?: string; address?: string; asset?: string } {
+    return {
+      rate: this.#advertised?.rate,
+      address: this.#advertised?.payTo,
+      asset: this.#advertised?.asset,
+    };
   }
 
   #buildProviderSettlements(turnCounts: Map<string, number>): ProviderSettlement[] {
@@ -98,15 +115,32 @@ export class AgentSession {
   }
 
   async initialize(): Promise<void> {
-    const rate = parseUnits(this.config.rate);
     const escrow = parseUnits(this.config.escrow);
 
+    // 1) Discover the provider's terms from its x402 402 response.
+    const advertised = await X402ServiceChannel.discoverTerms(this.config.providerUrl);
+    if (advertised === undefined) {
+      throw new Error(`provider at ${this.config.providerUrl} did not advertise x402 terms`);
+    }
+    // The provider is the source of truth for the rate; fall back to config only
+    // if the provider didn't advertise one.
+    const rate = parseUnits(advertised.rate ?? this.config.rate);
+
+    // 2) The consumer holds DEPOSITOR_SECRET and pays. The provider-advertised
+    //    address + asset become the settlement recipient + token bound into the
+    //    proof (overriding any consumer-side PROVIDER_PUBLIC / token env).
     const real = realChainFromEnv();
     const chain: ChainClient = real?.chain ?? new MockChainClient();
 
     const depositorPayload = real?.depositorPayload ?? randomBytes(32);
-    const providerPayload = real?.providerPayload ?? randomBytes(32);
-    const tokenPayload = real?.tokenPayload ?? randomBytes(32);
+    const providerPayload =
+      advertised.payTo !== undefined
+        ? addressToPayload(advertised.payTo)
+        : (real?.providerPayload ?? randomBytes(32));
+    const tokenPayload =
+      advertised.asset !== undefined
+        ? addressToPayload(advertised.asset)
+        : (real?.tokenPayload ?? randomBytes(32));
 
     const terms: ChannelTerms = {
       channelId: randField(),
@@ -122,8 +156,10 @@ export class AgentSession {
 
     const rateCommitment = await computeRateCommitment(rate, terms.rateBlind);
     const consumerPublicKey = await deriveConsumerPublicKey(terms.consumerPrivateKey);
+    const meterDb = new MeterDb(process.env.METER_DB_PATH ?? "artifacts/metering.db");
 
-    await chain.openChannel({
+    // 3) Consumer funds the escrow on-chain (depositor pays).
+    const opened = await chain.openChannel({
       channelId: terms.channelId,
       rateCommitment,
       consumerPublicKey,
@@ -133,15 +169,23 @@ export class AgentSession {
       escrow,
     });
 
+    // 4) x402-open the metered channel and persist the channel + advertised
+    //    recipient to the MeterDb so settlement can be driven from durable state.
     const channel = await X402ServiceChannel.open<ToolCall, ToolResult>({
       providerUrl: this.config.providerUrl,
       terms,
       paymentSignature: this.config.paymentSignature,
+      meterDb,
+      rateCommitment,
+      openTx: opened.openTx,
+      serviceName: "toolbox",
     });
 
     this.#chain = chain;
     this.#terms = terms;
     this.#channel = channel;
+    this.#meterDb = meterDb;
+    this.#advertised = advertised;
     this.#sessionBillable = 0n;
     this.#sessionCalls = 0;
     this.#byTool.clear();
@@ -204,25 +248,33 @@ export class AgentSession {
   }
 
   async shutdown(): Promise<void> {
-    if (this.#channel === undefined || this.#terms === undefined || this.#chain === undefined) {
+    if (this.#terms === undefined || this.#chain === undefined || this.#meterDb === undefined) {
       return;
     }
 
     try {
-      const settlement = await this.#channel.close();
-      await this.#chain.settle({
-        settlement: settlement.serialized,
-        depositor: this.#terms.depositorPayload,
-        provider: this.#terms.providerPayload,
-        token: this.#terms.tokenPayload,
-      });
+      // Fetch the persisted channel (terms + final voucher) from the meter DB and
+      // settle ONCE. The depositor (DEPOSITOR_SECRET) pays; funds go to the
+      // provider-advertised address bound into the proof.
+      const snapshot = this.#meterDb.loadChannel(this.#terms.channelId);
+      if (snapshot?.latestVoucher !== undefined) {
+        const settlement = await settlementFromSnapshot(snapshot);
+        await this.#chain.settle({
+          settlement: settlement.serialized,
+          depositor: snapshot.terms.depositorPayload,
+          provider: snapshot.terms.providerPayload,
+          token: snapshot.terms.tokenPayload,
+        });
+      }
     } catch {
-      // No vouchers were accepted — nothing to settle.
+      // No vouchers accepted (or settle failed) — nothing to settle.
     } finally {
+      this.#meterDb.close();
       this.#ready = false;
       this.#channel = undefined;
       this.#terms = undefined;
       this.#chain = undefined;
+      this.#meterDb = undefined;
     }
   }
 }

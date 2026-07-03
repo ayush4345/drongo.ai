@@ -43,6 +43,8 @@ export function createConsumerServer(deps: ConsumerServerDeps): Express {
     res.json({
       ok: session.ready,
       provider: providerInfo(config),
+      // Terms the provider advertised in its x402 402 (rate/address/asset).
+      providerTerms: session.getProviderTerms(),
       tools: ALL_TOOLS,
       providers: Object.entries(TOOL_PROVIDERS).map(([tool, meta]) => ({
         tool,
