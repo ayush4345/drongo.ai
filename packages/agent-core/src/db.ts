@@ -177,6 +177,12 @@ export class MeterDb {
     }));
   }
 
+  /** Load a single channel snapshot by id — used at settlement to fetch the
+   * persisted terms + final voucher and settle from durable state. */
+  loadChannel(channelId: bigint): MeterChannelSnapshot | undefined {
+    return this.loadChannels().find((c) => c.terms.channelId === channelId);
+  }
+
   listMeterEvents(channelId?: bigint): MeterEvent[] {
     const rows = (
       channelId === undefined

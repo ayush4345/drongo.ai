@@ -1,12 +1,47 @@
 # slate
 
-Privacy-preserving **metered payment channels** on Stellar/Soroban. A consumer
-funds an escrow, meters usage off-chain against a committed rate, and settles by
-submitting a zero-knowledge proof — the provider is paid the metered amount and
-the depositor refunded the remainder, without revealing the rate or usage.
+**Confidential, metered pay-per-use commerce between autonomous agents**, settled
+on Stellar/Soroban with a zero-knowledge proof.
 
-The system is built from a Circom settlement circuit, a Groth16 verifier and two
-stateful contracts on Soroban, plus a TypeScript proving/serialization toolkit.
+A **consumer agent** — driven by an LLM — is given a goal, picks tools, and
+**buys each call, per call**, from a **provider agent** over the network. It
+signs a running EdDSA-Poseidon voucher for every purchase against a rate it never
+reveals, and at the end **settles the whole session with a single Groth16 proof**.
+On-chain the provider is paid exactly the metered amount and the depositor is
+refunded the remainder — **without the rate or the usage ever appearing on the
+ledger**. Only a Poseidon commitment to the rate is public.
+
+The result: agents can transact metered services (weather, prices, translation,
+inference, …) with the auditability of a public chain and the privacy of an
+off-chain meter.
+
+---
+
+## How the pieces fit
+
+```
+                 web (:3000)                     ← chat UI / marketing site
+                     │  POST /api/chat
+                     ▼
+        agent-consumer (:4022)                   ← LLM brain, buys tools, settles once
+                     │  x402  402 → X-PAYMENT → open
+                     │  cumulative voucher per call
+                     ▼
+        agent-provider (:4021)                   ← keyless metered services, meters only
+                     ▲
+                     │ both agents compose ↓
+        ┌────────────┴─────────────┐
+        │      agent-core          │             ← Service / channel / ChainClient seams
+        └──────┬────────────┬──────┘
+               │            │
+       proving-setup   onchain-setup             ← ZK toolkit + Soroban contracts
+       (Circom+Groth16) (verifier/escrow/registry)
+```
+
+Every arrow is a **seam with a mock and a real implementation** — the payment
+verifier, the on-chain `ChainClient`, the LLM brain, and the service transport
+all run offline for demos/tests and swap to real APIs, real chain, real LLM, and
+a real x402 facilitator by configuration alone.
 
 ---
 
@@ -14,36 +49,148 @@ stateful contracts on Soroban, plus a TypeScript proving/serialization toolkit.
 
 ```
 packages/
-├── proving-setup/            @drongo/proving-setup — TS proving toolkit
-│   ├── circuits/settlement.circom        the metered-settlement circuit
-│   ├── settlement_js/settlement.wasm      compiled witness calculator
-│   ├── settlement_final.zkey              Groth16 proving key
-│   ├── settlement_verification_key.json   verifying key
-│   └── src/
-│       ├── index.ts          generateSettlementProof + validation
-│       ├── inputs.ts         voucher / circuit-input builders
-│       └── serialize.ts      snarkjs proof → Soroban byte layout
-│
-└── onchain-setup/            @drongo/onchain-setup — Soroban contracts
-    └── soroban/contracts/
-        ├── meteredverifier/      Groth16 / BN254 proof verifier (embeds vk.rs)
-        ├── slate-escrow/         holds funds, verifies proofs, settles
-        └── slate-agent-registry/ channel identity + lifecycle
+├── proving-setup/     @drongo/proving-setup   ZK toolkit: circuit, proofs, serialization
+├── onchain-setup/     @drongo/onchain-setup   Soroban contracts + TS client bindings
+└── agent-core/        @drongo/agent-core      shared runtime: services, channel, chain seam, MeterDb
+
+agents/
+├── provider/          @drongo/agent-provider  keyless metered services + x402 server (:4021)
+└── consumer/          @drongo/agent-consumer  LLM buyer + chat server (:4022)
+
+web/                   @drongo/web             Next.js front end (:3000)
 ```
 
-### Component responsibilities
-
-| Component | Role |
-|---|---|
-| `settlement.circom` | Proves a settlement is honest: rate commitment, EdDSA voucher, `settlement = total_units · rate`, `settlement ≤ escrow`, nullifier. |
-| `meteredverifier` | Pure Groth16/BN254 pairing check against an embedded verifying key. No state, no funds. |
-| `slate-escrow` | Custodies deposits, cross-calls the verifier, enforces amounts + nullifier replay protection, pays out. |
-| `slate-agent-registry` | Stores the fixed per-channel parameters (identities, rate commitment, pubkey) and open/closed status. |
-| `proving-setup` | Builds vouchers and circuit inputs, generates proofs, and serializes them into the contract byte layout. |
+A pnpm workspace wired with TypeScript project references. `agent-core` is the
+hinge: it is the **only** place that touches `proving-setup` and `onchain-setup`,
+so both agents share one metering / proving / settlement implementation.
 
 ---
 
-## Public signal layout
+## The layers
+
+### `@drongo/proving-setup` — the cryptographic core
+
+The zero-knowledge toolkit and the source of truth for *what an honest
+settlement is*. A Circom circuit (`circuits/settlement.circom`) compiled to a
+wasm witness calculator plus Groth16 keys, wrapped in a TypeScript API that:
+
+- builds usage **vouchers** — EdDSA-Poseidon signatures over Baby Jubjub
+  (`createVoucher`), the consumer's private key never leaving its side;
+- assembles the **13 public-signal** circuit inputs (`buildSettlementInputs`),
+  verifying the voucher and computing `settlement = total_units · rate`, the
+  Poseidon `rate_commitment`, and the `nullifier`;
+- generates the proof (`generateSettlementProof`, via `snarkjs`); and
+- serializes it into the exact byte layout the on-chain verifier expects
+  (`serializeSettlement`).
+
+The circuit enforces the honesty constraints: rate commitment, a valid consumer
+signature, `settlement = total_units · rate`, `settlement ≤ escrow`, and a
+nullifier for replay protection. See **[Settlement protocol reference](#settlement-protocol-reference)**
+below for the signal layout and end-to-end proving/settle flow.
+
+### `@drongo/onchain-setup` — the Soroban contracts
+
+Three Rust contracts and their generated TypeScript client bindings.
+
+| Contract | Role |
+|---|---|
+| `meteredverifier` | Stateless Groth16/BN254 pairing check against an embedded verifying key. No state, no funds. |
+| `slate-escrow` | Custodies deposits, cross-calls the verifier, enforces `settlement ≤ escrow` + nullifier replay protection, pays out. |
+| `slate-agent-registry` | Stores the fixed per-channel parameters (identities, rate commitment, pubkey) and open/closed lifecycle. |
+
+The proving key and the verifier's embedded `vk.rs` come from the same ceremony,
+so a proof made locally verifies on-chain. `src/index.ts` re-exports the contract
+clients (`SlateEscrowClient`, `SlateAgentRegistryClient`, `MeteredVerifierClient`)
+that the runtime consumes. **See [`packages/onchain-setup/soroban/README.md`](packages/onchain-setup/soroban/README.md)**
+for the contracts, build, and deployment.
+
+### `@drongo/agent-core` — the shared runtime
+
+The seam layer that lets agents *compose* the crypto instead of re-implementing
+it. Key modules:
+
+- **`service.ts`** — the priced `Service<Req,Res>` interface (`name` / `price` /
+  `handle`). The **provider prices independently** and never trusts a
+  consumer-claimed cost.
+- **`channel.ts`** — `ConsumerMeter` / `ProviderMeter` / `ServiceChannel`:
+  cumulative-voucher metering with typed reject reasons (`bad-signature`,
+  `non-monotonic`, `ceiling-exceeded`, …).
+- **`chain.ts`** — the `ChainClient` seam. Open = `registry.register_channel` +
+  `escrow.add_to_depositors`; close = `escrow.settle`. Agents depend on this
+  interface, so the whole loop is **testable without a deployed contract**.
+- **`x402-client.ts` / `x402-channel.ts`** — the same metering loop carried over
+  HTTP with the x402 `402 → X-PAYMENT → open` handshake, so a channel behaves
+  identically in-process or remote-over-network.
+- **`db.ts` (`MeterDb`, `node:sqlite`) + `settle.ts`** — **durable settlement**.
+  The channel terms and every accepted voucher persist to `artifacts/metering.db`;
+  `settlementFromSnapshot` rebuilds the proof from DB state, so settlement
+  survives restarts and is auditable. Exported via the separate
+  `@drongo/agent-core/db` entry (Node 22+) so Node-20 servers don't load sqlite
+  unless they need it.
+
+### `@drongo/agent-provider` — the service side
+
+Keyless metered services sold per call — `WeatherService` (Open-Meteo),
+`CryptoPriceService` (CoinGecko), `TranslationService` (MyMemory) — bundled by
+`buildToolbox` into one `ToolboxService` so any mix of tools settles with a
+single proof. It hosts the **x402 resource server** (`:4021`), **advertises its
+own terms** (per-unit rate, `payTo` address, asset) in the `402`, and **only
+meters**: it verifies each cumulative voucher before running a tool but never
+builds the settlement proof. **See [`agents/provider/README.md`](agents/provider/README.md).**
+
+### `@drongo/agent-consumer` — the buyer
+
+The LLM-driven consumer. A `ServiceAgent` drives an `AgentBrain` —
+`StubAgentBrain` (deterministic, offline) or `OpenAiAgentBrain` (real
+function-calling when `OPENAI_API_KEY` is set) — that picks tools, buys each call,
+feeds results back to the LLM, and at close **settles once** with a Groth16 proof.
+It **discovers** the provider's advertised terms from the `402`, holds
+`DEPOSITOR_SECRET` (so the consumer funds escrow and pays for everything), and
+runs a chat server (`:4022`). **See [`agents/consumer/README.md`](agents/consumer/README.md).**
+
+### `@drongo/web` — the front end
+
+A Next.js (App Router) app: a marketing site plus a `/dashboard` chat UI that
+proxies `POST /api/chat → http://localhost:4022/chat` to the consumer server.
+**See [`web/README.md`](web/README.md).**
+
+---
+
+## Quickstart — the full demo
+
+```bash
+pnpm install
+pnpm -r build
+
+# terminal 1 — provider x402 server (:4021)
+pnpm --filter @drongo/agent-provider serve
+
+# terminal 2 — consumer chat server (:4022, Node 22+)
+pnpm --filter @drongo/agent-consumer serve
+
+# terminal 3 — Next.js chat UI (:3000)
+pnpm --filter @drongo/web dev
+```
+
+Open <http://localhost:3000/dashboard> and chat. Set `OPENAI_API_KEY` for real
+LLM tool selection; otherwise the deterministic stub brain runs offline. Copy
+[`.env.example`](.env.example) → `.env`: **without `DEPOSITOR_SECRET` the demo
+runs in offline mock mode** (no chain calls); set it (plus the deployed contract
+IDs) to settle for real on Stellar testnet. On shutdown the consumer reads the
+channel from `MeterDb` and settles it with one ZK proof, paying the
+provider-advertised address.
+
+To run the agent loop without the web UI (in-process or over x402), see the
+provider and consumer READMEs.
+
+---
+
+## Settlement protocol reference
+
+The cross-cutting contract shared by the circuit, the contracts, and the
+serializer. This is the canonical spec for `proving-setup` + `onchain-setup`.
+
+### Public signal layout
 
 The circuit exposes **13 public signals**, in this order. The same indices are
 used by every contract and by the serializer.
@@ -63,10 +210,6 @@ used by every contract and by the serializer.
 Soroban addresses are 32-byte payloads split into two 128-bit limbs
 (`hi = bytes[0..16]`, `lo = bytes[16..32]`, big-endian) so they fit the BN254
 scalar field.
-
----
-
-## Technical logic flow
 
 ### Phase 0 — Build & deploy (one-time)
 
@@ -201,12 +344,19 @@ submitter:      ▼
 
 ## Development
 
-Each package builds with TypeScript project references:
+The workspace builds with TypeScript project references:
 
 ```bash
-# proving-setup
-pnpm --filter @drongo/proving-setup build
+pnpm install
+pnpm -r build                                   # or: pnpm --filter <pkg> build
 
 # Soroban contracts
 cd packages/onchain-setup/soroban && cargo test
 ```
+
+Per-layer usage, env vars, and demos live in each package's README:
+[proving-setup](#drongoproving-setup--the-cryptographic-core) ·
+[onchain-setup](packages/onchain-setup/soroban/README.md) ·
+[agent-provider](agents/provider/README.md) ·
+[agent-consumer](agents/consumer/README.md) ·
+[web](web/README.md).

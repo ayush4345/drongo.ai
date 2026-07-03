@@ -1,6 +1,6 @@
 import type { ToolResult } from "@drongo/agent-core";
 import type { AgentBrain, AgentDecision } from "./agent.js";
-import type { ToolSpec } from "./tools.js";
+import type { ToolSpec } from "@drongo/agent-provider";
 
 const COINS: Record<string, string> = {
   btc: "bitcoin", bitcoin: "bitcoin", eth: "ethereum", ethereum: "ethereum",
@@ -23,8 +23,8 @@ const LANGS: Record<string, string> = {
 export class StubAgentBrain implements AgentBrain {
   async decide(goal: string, _tools: ToolSpec[], gathered: ToolResult[]): Promise<AgentDecision> {
     if (gathered.length > 0) {
-      const parts = gathered.map((g) => `${g.tool} → ${JSON.stringify(g.result)}`);
-      return { answer: `Used ${gathered.length} paid service(s): ${parts.join("  |  ")}` };
+      const parts = gathered.map((g) => formatToolResult(g.tool, g.result));
+      return { answer: parts.join("\n\n") };
     }
 
     const g = goal.toLowerCase();
@@ -58,20 +58,28 @@ export class StubAgentBrain implements AgentBrain {
 }
 
 function parseTranslation(goal: string): { text: string; to: string } | null {
-  const quoted = goal.match(/["'“”]([^"'“”]+)["'“”]/);
-  const text = quoted?.[1]?.trim();
-
-  let to: string | undefined;
   const lower = goal.toLowerCase();
+  let to: string | undefined;
   for (const [name, code] of Object.entries(LANGS)) {
     if (lower.includes(name)) {
       to = code;
       break;
     }
   }
+  if (to === undefined) return null;
 
-  if (text === undefined || text.length === 0 || to === undefined) return null;
-  return { text, to };
+  const quoted = goal.match(/["'\u201c\u201d]([^"'\u201c\u201d]+)["'\u201c\u201d]/);
+  if (quoted?.[1]?.trim()) {
+    return { text: quoted[1].trim(), to };
+  }
+
+  const unquoted = goal.match(/translat(?:e|ion)?\s+(.+?)\s+(?:to|into)\s+/i);
+  if (unquoted?.[1]) {
+    const text = unquoted[1].replace(/^["'\u201c\u201d]|["'\u201c\u201d]$/g, "").trim();
+    if (text.length > 0) return { text, to };
+  }
+
+  return null;
 }
 
 const NOISE = new Set([
@@ -90,4 +98,33 @@ function extractPlaces(goal: string): string[] {
     if (!out.includes(m)) out.push(m);
   }
   return out;
+}
+
+function formatToolResult(tool: string, result: unknown): string {
+  if (result === null || typeof result !== "object") return String(result);
+
+  const r = result as Record<string, unknown>;
+
+  if (tool === "get_weather") {
+    const location = r.location ?? "Unknown";
+    const temp = r.temperatureC;
+    const summary = r.summary ?? "unknown conditions";
+    const wind = r.windKph;
+    return `Weather in ${location}: ${temp}°C, ${summary}${wind !== undefined ? `, wind ${wind} km/h` : ""}.`;
+  }
+
+  if (tool === "get_crypto_price") {
+    const coin = r.coin ?? r.id ?? "asset";
+    const price = r.price ?? r.usd;
+    const change = r.change24h ?? r.change_24h;
+    const suffix = change !== undefined ? ` (${Number(change) >= 0 ? "+" : ""}${change}% 24h)` : "";
+    return `${coin} price: ${price}${suffix}.`;
+  }
+
+  if (tool === "translate_text") {
+    const translated = r.translatedText ?? r.text ?? JSON.stringify(result);
+    return `Translation: ${translated}`;
+  }
+
+  return JSON.stringify(result);
 }

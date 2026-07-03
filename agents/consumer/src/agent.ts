@@ -1,5 +1,5 @@
 import type { MeteredServiceChannel, ToolCall, ToolResult } from "@drongo/agent-core";
-import type { ToolSpec } from "./tools.js";
+import type { ToolSpec } from "@drongo/agent-provider";
 
 /** What the brain decides each round: some tool calls to make, or a final answer. */
 export interface AgentDecision {
@@ -19,11 +19,32 @@ export interface CallRecord {
   served: boolean;
   result?: unknown;
   reason?: string;
+  billable?: string;
+  cumulativeUnits?: string;
 }
 
 export interface AgentRunResult {
   answer: string;
   calls: CallRecord[];
+}
+
+export interface ProviderSettlement {
+  providerId: string;
+  providerLabel: string;
+  tool: string;
+  turnCalls: number;
+  turnBillable: string;
+  sessionCalls: number;
+  sessionBillable: string;
+}
+
+export interface TurnPayment {
+  turnCalls: number;
+  turnBillable: string;
+  sessionCalls: number;
+  sessionBillable: string;
+  tokenSymbol: string;
+  providers: ProviderSettlement[];
 }
 
 /**
@@ -67,6 +88,8 @@ export class ServiceAgent {
           record.result = out.result.result;
           gathered.push(out.result);
         }
+        if (out.billable !== undefined) record.billable = out.billable.toString();
+        if (out.cumulativeUnits !== undefined) record.cumulativeUnits = out.cumulativeUnits.toString();
         calls.push(record);
 
         if (!out.served && out.reason === "ceiling-exceeded") {

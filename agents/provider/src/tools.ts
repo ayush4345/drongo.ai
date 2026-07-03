@@ -1,8 +1,10 @@
 import { ToolboxService } from "@drongo/agent-core";
-import { WeatherService, CryptoPriceService, TranslationService } from "@drongo/agent-provider";
-import type { HttpClient } from "@drongo/agent-provider";
+import type { HttpClient } from "./http.js";
+import { WeatherService } from "./weather.js";
+import { CryptoPriceService } from "./crypto.js";
+import { TranslationService } from "./translation.js";
 
-/** A tool the agent can choose, described for the LLM (JSON-schema parameters). */
+/** A tool the provider offers, described for an LLM consumer (JSON-schema params). */
 export interface ToolSpec {
   name: string;
   description: string;
@@ -10,8 +12,9 @@ export interface ToolSpec {
 }
 
 /**
- * The provider's offered tools. The `name` of each MUST match the key used in
- * {@link buildToolbox} so a ToolCall routes to the right sub-service.
+ * The provider's offered tools, advertised to consumers (e.g. via the x402
+ * agent-card). Each `name` MUST match the key used in {@link buildToolbox} so a
+ * ToolCall routes to the right sub-service.
  */
 export const TOOL_SPECS: ToolSpec[] = [
   {
@@ -56,9 +59,9 @@ export const TOOL_SPECS: ToolSpec[] = [
 ];
 
 /**
- * Build the toolbox the provider serves. The keys MUST match the {@link TOOL_SPECS}
+ * Build the toolbox this provider serves. Keys MUST match {@link TOOL_SPECS}
  * names — that mapping is how a tool call routes to its sub-service. Everything
- * meters over one channel, so the whole session settles with one proof.
+ * meters over one channel, so any mix of tools settles with one proof.
  */
 export function buildToolbox(http: HttpClient): ToolboxService {
   return new ToolboxService({

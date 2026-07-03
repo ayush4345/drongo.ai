@@ -6,7 +6,6 @@
 // tool-using agent that picks WHICH service to use each turn. WeatherConsumerAgent
 // (+ LlmClient) is the original single-service agent, kept for reference.
 
-export * from "./tools.js";
 export * from "./agent.js";
 export * from "./stub-agent.js";
 export * from "./openai-agent.js";

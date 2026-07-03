@@ -17,16 +17,20 @@
   "scripts": {
     "build": "tsc -b",
     "clean": "rm -rf dist *.tsbuildinfo",
-    "demo": "tsx src/demo.ts"
+    "demo": "tsx src/demo.ts",
+    "demo:x402": "tsx src/x402-demo.ts",
+    "serve": "tsx src/serve.ts"
   },
   "dependencies": {
     "@drongo/agent-core": "workspace:*",
     "@drongo/agent-provider": "workspace:*",
     "@drongo/proving-setup": "workspace:*",
     "dotenv": "^16.4.5",
+    "express": "^5.1.0",
     "openai": "^4.57.0"
   },
   "devDependencies": {
+    "@types/express": "^5.0.3",
     "@types/node": "^26.0.1",
     "tsx": "^4.19.0",
     "typescript": "^5.9.2"

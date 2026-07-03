@@ -8,7 +8,12 @@ export * from "./money.js";
 export * from "./chain.js";
 export * from "./channel.js";
 export * from "./toolbox.js";
-export * from "./db.js";
+export * from "./voucher-wire.js";
+export * from "./x402-client.js";
+export * from "./x402-channel.js";
+export * from "./settle.js";
+// MeterDb uses node:sqlite (Node 22+). Import via "@drongo/agent-core/db" so
+// provider/consumer servers on Node 20 don't load it unless needed.
 export * from "./env.js";
 export * from "./soroban.js";
 export type { ConsumerPublicKey, Voucher } from "@drongo/proving-setup";
