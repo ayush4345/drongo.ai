@@ -28,6 +28,31 @@ export interface ChatResult extends AgentRunResult {
   payment: TurnPayment;
 }
 
+/** One stage of the on-demand settlement performed when the UI hits "Settle". */
+export interface SettleStep {
+  kind: "proof" | "verify" | "transfer" | "done" | "skipped";
+  label: string;
+  detail?: string;
+}
+
+/** Result of closing + settling the live channel from the UI. */
+export interface SettleOutcome {
+  /** True when a real (or mock) on-chain settlement was submitted. */
+  settled: boolean;
+  /** Present when nothing was settled or settlement failed. */
+  reason?: string;
+  steps: SettleStep[];
+  /** On-chain settle transaction hash (or mock id). */
+  settleTx?: string;
+  /** Total metered units in the final voucher. */
+  totalUnits?: string;
+  /** settlement_amount = totalUnits · rate, in token base units. */
+  settlementAmount?: string;
+  /** Escrow ceiling that backed the channel, in token base units. */
+  escrow?: string;
+  tokenSymbol: string;
+}
+
 /**
  * One metered x402 session. On open it DISCOVERS the provider's terms from the
  * 402 (rate, settlement address, asset), accepts the provider's rate, funds the
@@ -247,34 +272,114 @@ export class AgentSession {
     }
   }
 
-  async shutdown(): Promise<void> {
+  /**
+   * Close the live channel and settle it ONCE from durable MeterDb state:
+   * build the Groth16 proof from the final voucher, submit it on-chain (proof
+   * verification + `settlement ≤ escrow` + nullifier check + split transfer),
+   * and tear the channel down. The depositor (DEPOSITOR_SECRET) pays; funds go
+   * to the provider-advertised address bound into the proof.
+   *
+   * On success (or when there is nothing to settle) the session is torn down and
+   * becomes not-ready — the caller must open a {@link newSession} before chatting
+   * again, since a channel's nullifier can only be spent once. On a real failure
+   * the channel is left intact so the caller can retry or keep chatting.
+   */
+  async settle(): Promise<SettleOutcome> {
+    const tokenSymbol = this.#tokenSymbol;
     if (this.#terms === undefined || this.#chain === undefined || this.#meterDb === undefined) {
-      return;
+      return {
+        settled: false,
+        reason: "no active channel to settle",
+        steps: [{ kind: "skipped", label: "No active channel", detail: "Open a session first." }],
+        tokenSymbol,
+      };
     }
 
-    try {
-      // Fetch the persisted channel (terms + final voucher) from the meter DB and
-      // settle ONCE. The depositor (DEPOSITOR_SECRET) pays; funds go to the
-      // provider-advertised address bound into the proof.
-      const snapshot = this.#meterDb.loadChannel(this.#terms.channelId);
-      if (snapshot?.latestVoucher !== undefined) {
-        const settlement = await settlementFromSnapshot(snapshot);
-        await this.#chain.settle({
-          settlement: settlement.serialized,
-          depositor: snapshot.terms.depositorPayload,
-          provider: snapshot.terms.providerPayload,
-          token: snapshot.terms.tokenPayload,
-        });
-      }
-    } catch {
-      // No vouchers accepted (or settle failed) — nothing to settle.
-    } finally {
-      this.#meterDb.close();
-      this.#ready = false;
-      this.#channel = undefined;
-      this.#terms = undefined;
-      this.#chain = undefined;
-      this.#meterDb = undefined;
+    const snapshot = this.#meterDb.loadChannel(this.#terms.channelId);
+    if (snapshot?.latestVoucher === undefined) {
+      this.#teardown();
+      return {
+        settled: false,
+        reason: "no accepted vouchers — nothing to settle",
+        steps: [
+          { kind: "skipped", label: "Nothing to settle", detail: "No metered calls were made this session." },
+        ],
+        tokenSymbol,
+      };
     }
+
+    const totalUnits = snapshot.latestVoucher.totalUnits;
+    const settlementAmount = totalUnits * snapshot.terms.rate;
+    const steps: SettleStep[] = [];
+
+    try {
+      const settlement = await settlementFromSnapshot(snapshot);
+      steps.push({
+        kind: "proof",
+        label: "Groth16 settlement proof generated",
+        detail: `${totalUnits} unit(s) · 13-signal circuit input from the final voucher`,
+      });
+
+      const settled = await this.#chain.settle({
+        settlement: settlement.serialized,
+        depositor: snapshot.terms.depositorPayload,
+        provider: snapshot.terms.providerPayload,
+        token: snapshot.terms.tokenPayload,
+      });
+      steps.push({
+        kind: "verify",
+        label: "Proof verified on-chain",
+        detail: "meteredverifier pairing check · settlement ≤ escrow · nullifier unspent",
+      });
+      steps.push({
+        kind: "transfer",
+        label: "Split transfer executed",
+        detail: "settlement → provider, remaining escrow refunded to depositor",
+      });
+      steps.push({ kind: "done", label: "Settlement complete", detail: settled.settleTx });
+
+      this.#teardown();
+      return {
+        settled: true,
+        steps,
+        settleTx: settled.settleTx,
+        totalUnits: totalUnits.toString(),
+        settlementAmount: settlementAmount.toString(),
+        escrow: snapshot.terms.escrow.toString(),
+        tokenSymbol,
+      };
+    } catch (error) {
+      // Settlement failed mid-flight — leave the channel intact so the caller can
+      // retry or keep chatting; do NOT tear down or mark the nullifier spent.
+      const reason = error instanceof Error ? error.message : String(error);
+      steps.push({ kind: "skipped", label: "Settlement failed", detail: reason });
+      return { settled: false, reason, steps, tokenSymbol };
+    }
+  }
+
+  /**
+   * Open a fresh channel between consumer and provider, discarding any prior
+   * (already-settled or torn-down) channel. Re-runs the full open handshake:
+   * discover the provider's 402 terms, fund a new escrow, and persist a new
+   * channel to the MeterDb.
+   */
+  async newSession(): Promise<void> {
+    if (this.#ready) this.#teardown();
+    await this.initialize();
+  }
+
+  /** Persist-nothing teardown of the in-memory channel + meter DB handle. */
+  #teardown(): void {
+    this.#meterDb?.close();
+    this.#ready = false;
+    this.#channel = undefined;
+    this.#terms = undefined;
+    this.#chain = undefined;
+    this.#meterDb = undefined;
+  }
+
+  /** Settle and tear down on process exit (SIGINT/SIGTERM). */
+  async shutdown(): Promise<void> {
+    await this.settle();
   }
 }

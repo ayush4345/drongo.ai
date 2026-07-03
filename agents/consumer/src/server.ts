@@ -84,5 +84,33 @@ export function createConsumerServer(deps: ConsumerServerDeps): Express {
     }
   });
 
+  // Close + settle the live channel on demand (the UI "Settle" button). Builds
+  // the ZK proof, submits it on-chain, and tears the channel down.
+  app.post("/settle", async (_req, res) => {
+    try {
+      const outcome = await session.settle();
+      res.json({ ok: true, ...outcome });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ ok: false, error: msg });
+    }
+  });
+
+  // Open a brand-new channel after a settlement (the UI "New Session" button).
+  app.post("/session/new", async (_req, res) => {
+    try {
+      await session.newSession();
+      res.json({
+        ok: true,
+        provider: providerInfo(config),
+        providerTerms: session.getProviderTerms(),
+        payment: session.getPaymentSummary(),
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ ok: false, error: msg });
+    }
+  });
+
   return app;
 }
