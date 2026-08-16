@@ -1,0 +1,15 @@
+# Compiler files
+cache/
+out/
+
+# Commonly ignored directories
+.logs/
+.ignore/
+
+# Broadcast logs (keep repo clean; local anvil deploys stay local)
+broadcast/
+
+# Dotenv
+.env
+.env.*
+!.env.example

@@ -62,7 +62,7 @@ The **provider is the source of truth for its price.** On open, the consumer
 rate; the consumer only proposes the `ESCROW` ceiling.
 
 Those terms are persisted to a local **MeterDb** (`artifacts/metering.db`), and
-every accepted call updates the meter. The **consumer holds `DEPOSITOR_SECRET`**
+every accepted call updates the meter. The **consumer holds `EVM_PRIVATE_KEY`**
 and makes all payments: it funds the escrow at open and, at shutdown, **reads
 the channel back from the MeterDb** and submits the single ZK settlement —
 paying the provider-advertised address. Only the Poseidon rate commitment goes

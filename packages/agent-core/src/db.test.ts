@@ -5,8 +5,9 @@ import { join } from "node:path";
 import { test } from "node:test";
 
 import type { ChannelTerms } from "./channel.js";
-import { MeterDb } from "./db.js";
 import type { Voucher } from "@drongo/proving-setup";
+
+const nodeMajor = Number(process.versions.node.split(".")[0] ?? "0");
 
 function bytes(fill: number): Uint8Array {
   return new Uint8Array(32).fill(fill);
@@ -32,7 +33,8 @@ const voucher: Voucher = {
   signature: { R8x: 23n, R8y: 29n, S: 31n },
 };
 
-test("MeterDb persists channel snapshots and meter events", () => {
+test("MeterDb persists channel snapshots and meter events", { skip: nodeMajor < 22 }, async () => {
+  const { MeterDb } = await import("./db.js");
   const dir = mkdtempSync(join(tmpdir(), "agent-core-db-"));
   const db = new MeterDb(join(dir, "metering.db"));
 

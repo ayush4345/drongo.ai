@@ -2,21 +2,16 @@ import type { Groth16Proof, PublicSignals, SettlementProof } from "./index.js";
 
 /**
  * Serialization bridge: converts a snarkjs Groth16 proof + public signals into
- * the byte/field layout the Soroban contracts expect.
+ * the packed byte/field layout used by settlement (`PackedProof`).
  *
- * The on-chain `Proof` struct is `{ a: BytesN<64>, b: BytesN<128>, c: BytesN<64> }`
- * in the Ethereum-compatible uncompressed encoding the Soroban BN254 host
- * functions use:
+ * Encoding (Ethereum-compatible uncompressed BN254):
  *   - G1 (64 bytes):  be(X) || be(Y)
  *   - G2 (128 bytes): be(X) || be(Y), each Fp2 element as be(c1) || be(c0)
  *                     (imaginary component FIRST, then real).
  *
  * snarkjs stores Fp2 coordinates as [c0, c1], so the G2 components are swapped
- * here. This mirrors `gen_verifier_data.js`, the generator the deployed
- * verifying key / `meteredverifier` contract were produced with.
- *
- * `public_signals` are emitted as `bigint`s (the contract's `Vec<U256>`); use
- * {@link fieldToBytes32} if a client needs the raw big-endian bytes instead.
+ * here. `public_signals` are emitted as `bigint`s; use {@link fieldToBytes32}
+ * if a client needs the raw big-endian bytes instead.
  */
 
 /** Number of public signals the metered-settlement circuit exposes. */
@@ -33,7 +28,7 @@ export class ProofSerializationError extends Error {
 }
 
 /** The on-chain `Proof` struct as raw big-endian byte arrays. */
-export interface SorobanProof {
+export interface PackedProof {
   /** G1 point A — 64 bytes (be(X) || be(Y)). */
   a: Uint8Array;
   /** G2 point B — 128 bytes (be(X) || be(Y), each Fp2 be(c1) || be(c0)). */
@@ -42,10 +37,10 @@ export interface SorobanProof {
   c: Uint8Array;
 }
 
-/** A proof and its public signals, serialized for a Soroban `settle` / `verify` call. */
+/** A proof and its public signals, serialized for `SlateEscrow.settle`. */
 export interface SerializedSettlement {
-  proof: SorobanProof;
-  /** 13 field elements, matching the contract's `Vec<U256>`. */
+  proof: PackedProof;
+  /** 13 field elements, matching the verifier's `uint256[13]`. */
   publicSignals: bigint[];
 }
 
@@ -139,8 +134,8 @@ function serializeG2(label: string, point: readonly (readonly string[])[]): Uint
   return out;
 }
 
-/** Convert a snarkjs Groth16 proof into the on-chain {@link SorobanProof} byte layout. */
-export function serializeProof(proof: Groth16Proof): SorobanProof {
+/** Convert a snarkjs Groth16 proof into the on-chain {@link PackedProof} byte layout. */
+export function serializeProof(proof: Groth16Proof): PackedProof {
   if (proof.protocol !== undefined && proof.protocol !== "groth16") {
     throw new ProofSerializationError(`unsupported proof protocol "${proof.protocol}", expected "groth16"`);
   }
@@ -175,7 +170,7 @@ export function serializePublicSignals(publicSignals: PublicSignals): bigint[] {
 
 /**
  * Serialize a {@link SettlementProof} (the output of `generateSettlementProof`)
- * into the proof bytes + public-signal field elements for a Soroban
+ * into the proof bytes + public-signal field elements for an EVM
  * `slate-escrow.settle` / `meteredverifier.verify` call.
  */
 export function serializeSettlement(result: SettlementProof): SerializedSettlement {

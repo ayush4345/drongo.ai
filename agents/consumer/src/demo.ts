@@ -7,6 +7,7 @@ import {
   ServiceChannel,
   MockChainClient,
   realChainFromEnv,
+  settlementBackendFromEnv,
   parseUnits,
   formatUnits,
 } from "@drongo/agent-core";
@@ -17,19 +18,18 @@ import { ServiceAgent } from "./agent.js";
 import { StubAgentBrain } from "./stub-agent.js";
 import { OpenAiAgentBrain } from "./openai-agent.js";
 
-// Load the monorepo-root .env (…/drongo.ai/.env) regardless of the directory the
-// demo is run from. A missing file is fine — the demo then runs in offline mock
-// mode. .env is gitignored, so secrets like DEPOSITOR_SECRET stay out of git.
+// Load the monorepo-root .env regardless of cwd. Missing file → offline mock.
+// .env is gitignored (EVM_PRIVATE_KEY stays local).
 const envPath = resolve(dirname(fileURLToPath(import.meta.url)), "../../../.env");
 const envLoad = loadEnv({ path: envPath });
 if (envLoad.error) {
   console.log(`env: no .env found at ${envPath} (${envLoad.error.message})`);
 } else {
   const keys = Object.keys(envLoad.parsed ?? {});
-  const hasSecret = keys.includes("DEPOSITOR_SECRET");
+  const hasEvm = keys.includes("EVM_PRIVATE_KEY");
   console.log(
     `env: loaded ${keys.length} var(s) from ${envPath}` +
-      (hasSecret ? "" : " — DEPOSITOR_SECRET NOT among them (check for an `export` prefix or typo)"),
+      (hasEvm ? " — Base (EVM_PRIVATE_KEY)" : " — no EVM_PRIVATE_KEY (mock mode)"),
   );
 }
 
@@ -43,20 +43,17 @@ async function main(): Promise<void> {
     process.argv.slice(2).join(" ") ||
     "What's the weather in Tokyo, the price of ETH in USD, and translate 'good morning' into Japanese?";
 
-  // Amounts are in the settlement token's base units (Stellar = 7 decimals,
-  // stroops). Default settlement asset is native XLM (see realChainFromEnv).
-  const symbol = process.env.SETTLEMENT_TOKEN_SYMBOL ?? "XLM";
-  const rate = parseUnits(process.env.RATE ?? "0.0001"); // PRIVATE per-call rate
-  const escrow = parseUnits(process.env.ESCROW ?? "0.01"); // public escrow ceiling
+  const backend = settlementBackendFromEnv();
+  const symbol = process.env.SETTLEMENT_TOKEN_SYMBOL ?? "USDC";
+  const rate = parseUnits(process.env.RATE ?? "0.0001");
+  const escrow = parseUnits(process.env.ESCROW ?? "0.01");
 
-  // Real Stellar settlement when DEPOSITOR_SECRET + contract IDs are configured;
-  // otherwise an in-memory mock so the demo always runs offline.
   const real = realChainFromEnv();
   if (!real) {
-    console.log("note: MOCK mode — DEPOSITOR_SECRET is not set in the environment.");
+    console.log("note: MOCK mode — set EVM_PRIVATE_KEY for on-chain Base settlement.");
   }
   const chain: ChainClient = real?.chain ?? new MockChainClient();
-  const mode = real ? "REAL Soroban (Stellar testnet)" : "mock (offline)";
+  const mode = backend === "base" ? "REAL Base (EVM)" : "mock (offline)";
 
   // The same 32-byte payloads must be bound into the proof AND used on-chain, so
   // the contract's address checks in settle() match the proof's public signals.
@@ -146,8 +143,9 @@ async function main(): Promise<void> {
   console.log(`  proof bytes:             a=${settlement.serialized.proof.a.length} b=${settlement.serialized.proof.b.length} c=${settlement.serialized.proof.c.length}`);
   console.log(`  public signals:          ${settlement.serialized.publicSignals.length} (13-signal layout)`);
   console.log(`  settle tx:               ${settled.settleTx}`);
-  if (real) {
-    console.log(`\n  view on explorer: https://stellar.expert/explorer/testnet/tx/${settled.settleTx}`);
+  if (backend === "base") {
+    const chainId = process.env.BASE_CHAIN_ID ?? "84532";
+    console.log(`\n  view on explorer: https://sepolia.basescan.org/tx/${settled.settleTx} (chain ${chainId})`);
   }
   meterDb.close();
 }

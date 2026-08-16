@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
-import { Keypair, Address, Asset } from "@stellar/stellar-sdk";
-import { sorobanConfigFromEnv, assertSorobanConfig } from "@drongo/onchain-setup";
-import { SorobanChainClient } from "./chain.js";
+import {
+  baseConfigFromEnv,
+  assertBaseConfig,
+  BASE_SEPOLIA_USDC_ADDRESS,
+} from "@drongo/onchain-setup";
+import { evmAddressToPayload } from "@drongo/proving-setup";
+import { accountFromPrivateKey, BaseChainClient } from "./base.js";
 import type { ChainClient } from "./chain.js";
-
-/** Stellar testnet USDC SEP-41 contract — an alternative settlement asset. */
-export const USDC_TESTNET_CONTRACT_ID =
-  "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA";
 
 /** A real, configured chain client plus the 32-byte address payloads it binds. */
 export interface RealChainSetup {
@@ -15,88 +15,81 @@ export interface RealChainSetup {
   depositorPayload: Uint8Array;
   providerPayload: Uint8Array;
   tokenPayload: Uint8Array;
-  /** The settlement token contract id (C…) being used. */
+  /** The settlement token contract address (0x…). */
   tokenId: string;
   /** Human-readable summary of the bound addresses, for logging. */
   label: string;
 }
 
-/** Strkey (G…/C…) → its raw 32-byte payload (the form the proof binds). */
-function strkeyToPayload(strkey: string): Uint8Array {
-  return Uint8Array.from(Address.fromString(strkey).toBuffer());
-}
-
 /**
- * Convert an address advertised by a provider (a Stellar strkey, G… or C…) into
- * the 32-byte payload the settlement proof binds. If the string is not a valid
- * strkey (e.g. a demo placeholder in mock mode), it falls back to a
- * deterministic SHA-256 of the string so offline demos still produce consistent
- * payloads with no real account.
+ * Convert a provider-advertised address into the 32-byte payload the settlement
+ * proof binds. Accepts:
+ *  - EVM `0x` address (20 bytes) → left-padded 32-byte payload (Option A)
+ *  - anything else → deterministic SHA-256 (offline demo placeholders)
  */
 export function addressToPayload(address: string): Uint8Array {
-  try {
-    return strkeyToPayload(address);
-  } catch {
-    return Uint8Array.from(createHash("sha256").update(address).digest());
+  if (/^0x[0-9a-fA-F]{40}$/.test(address)) {
+    return evmAddressToPayload(address);
   }
+  return Uint8Array.from(createHash("sha256").update(address).digest());
+}
+
+/** Which settlement backend `realChainFromEnv` selected, if any. */
+export type SettlementBackend = "base";
+
+export function settlementBackendFromEnv(env: NodeJS.ProcessEnv = process.env): SettlementBackend | null {
+  return env.EVM_PRIVATE_KEY ? "base" : null;
 }
 
 /**
- * Build a real {@link SorobanChainClient} and the address payloads it binds from
- * the environment, or return `null` when no `DEPOSITOR_SECRET` is set so callers
- * fall back to a `MockChainClient`.
- *
- * Setting `DEPOSITOR_SECRET` is the "go real" signal; the deployed contract IDs
- * are then required (an absent one throws a clear error via `assertSorobanConfig`).
- *
- * The settlement token defaults to **native XLM** (its Stellar Asset Contract,
- * derived per-network) — the escrow speaks the SEP-41 token interface, and the
- * native SAC implements it, so no trustline is needed and friendbot-funded
- * accounts work out of the box. Point it at USDC (or any SEP-41 SAC) via
- * `SETTLEMENT_TOKEN_ID`. NOTE: whichever token you use must be whitelisted in
- * the escrow (`whitelist_token`).
- *
- * Env:
- *  - `DEPOSITOR_SECRET`        Stellar secret (S…) that funds escrow + signs txs.
- *  - `STELLAR_SLATE_ESCROW_ID`, `STELLAR_SLATE_AGENT_REGISTRY_ID`,
- *    `STELLAR_METERED_VERIFIER_ID`  deployed contract IDs (read by sorobanConfigFromEnv).
- *  - `PROVIDER_PUBLIC`         provider account (G…); defaults to the depositor.
- *  - `SETTLEMENT_TOKEN_ID`    SEP-41 token contract (C…); defaults to native XLM's SAC.
- *  - `SOROBAN_RPC_URL`, `SOROBAN_NETWORK_PASSPHRASE`  optional RPC overrides.
+ * Build a {@link BaseChainClient} when `EVM_PRIVATE_KEY` is set.
+ * Returns `null` for offline mock mode.
  */
 export function realChainFromEnv(env: NodeJS.ProcessEnv = process.env): RealChainSetup | null {
-  const secret = env.DEPOSITOR_SECRET;
-  if (!secret) return null;
+  return realBaseChainFromEnv(env);
+}
 
-  const config = sorobanConfigFromEnv({
-    ...(env.SOROBAN_RPC_URL ? { rpcUrl: env.SOROBAN_RPC_URL } : {}),
-    ...(env.SOROBAN_NETWORK_PASSPHRASE ? { networkPassphrase: env.SOROBAN_NETWORK_PASSPHRASE } : {}),
-  });
-  assertSorobanConfig(config);
+/**
+ * Build a {@link BaseChainClient} from env, or `null` when `EVM_PRIVATE_KEY` is unset.
+ *
+ * Env:
+ *  - `EVM_PRIVATE_KEY`           depositor EOA (0x…)
+ *  - `BASE_RPC_URL`, `BASE_CHAIN_ID`
+ *  - `BASE_SLATE_ESCROW_ADDRESS`, `BASE_SLATE_AGENT_REGISTRY_ADDRESS`,
+ *    `BASE_SETTLEMENT_VERIFIER_ADDRESS` (or `BASE_METERED_VERIFIER_ADDRESS`)
+ *  - `PROVIDER_ADDRESS`          provider EOA (0x…); defaults to depositor
+ *  - `SETTLEMENT_TOKEN_ID` / `BASE_USDC_ADDRESS`  ERC-20; defaults to Base Sepolia USDC
+ */
+export function realBaseChainFromEnv(env: NodeJS.ProcessEnv = process.env): RealChainSetup | null {
+  const privateKey = env.EVM_PRIVATE_KEY;
+  if (!privateKey) return null;
 
-  const depositorKeypair = Keypair.fromSecret(secret);
-  const depositorPublic = depositorKeypair.publicKey();
-  const providerPublic = env.PROVIDER_PUBLIC ?? depositorPublic;
+  const config = baseConfigFromEnv({}, env);
+  assertBaseConfig(config);
 
-  // Default settlement asset: native XLM, via its Stellar Asset Contract for the
-  // configured network. Override with SETTLEMENT_TOKEN_ID (e.g. the USDC SAC).
-  const tokenId =
-    env.SETTLEMENT_TOKEN_ID ??
+  const account = accountFromPrivateKey(privateKey);
+  const depositor = account.address;
+  const provider = (env.PROVIDER_ADDRESS ?? env.PROVIDER_PUBLIC ?? depositor) as `0x${string}`;
+  if (!/^0x[0-9a-fA-F]{40}$/.test(provider)) {
+    throw new Error(`PROVIDER_ADDRESS must be a 0x EVM address, received "${provider}"`);
+  }
+
+  const tokenId = (env.SETTLEMENT_TOKEN_ID ??
+    env.BASE_USDC_ADDRESS ??
     env.USDC_TOKEN_ID ??
-    Asset.native().contractId(config.networkPassphrase);
+    BASE_SEPOLIA_USDC_ADDRESS) as `0x${string}`;
+  if (!/^0x[0-9a-fA-F]{40}$/.test(tokenId)) {
+    throw new Error(`SETTLEMENT_TOKEN_ID must be a 0x ERC-20 address, received "${tokenId}"`);
+  }
 
-  const chain = new SorobanChainClient({
-    config,
-    depositorKeypair,
-    addressKinds: { depositor: "account", provider: "account", token: "contract" },
-  });
+  const chain = new BaseChainClient({ config, account });
 
   return {
     chain,
-    depositorPayload: strkeyToPayload(depositorPublic),
-    providerPayload: strkeyToPayload(providerPublic),
-    tokenPayload: strkeyToPayload(tokenId),
+    depositorPayload: evmAddressToPayload(depositor),
+    providerPayload: evmAddressToPayload(provider),
+    tokenPayload: evmAddressToPayload(tokenId),
     tokenId,
-    label: `depositor=${depositorPublic.slice(0, 6)}… provider=${providerPublic.slice(0, 6)}… token=${tokenId.slice(0, 6)}…`,
+    label: `base depositor=${depositor.slice(0, 8)}… provider=${provider.slice(0, 8)}… token=${tokenId.slice(0, 8)}…`,
   };
 }

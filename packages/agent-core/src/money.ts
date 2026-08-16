@@ -18,10 +18,9 @@ export function formatMicros(value: bigint): string {
 
 /**
  * Parse a non-negative decimal string into integer base units at `decimals`
- * precision. Stellar assets (native XLM and SAC-wrapped classic assets) use
- * **7** decimals — stroops — so that is the default.
+ * precision. Default is **6** (Base USDC).
  */
-export function parseUnits(value: string, decimals = 7): bigint {
+export function parseUnits(value: string, decimals = 6): bigint {
   const parts = value.split(".");
   const whole = parts[0] ?? "0";
   const fractional = (parts[1] ?? "").padEnd(decimals, "0").slice(0, decimals);
@@ -29,7 +28,7 @@ export function parseUnits(value: string, decimals = 7): bigint {
 }
 
 /** Format integer base units back into a trimmed decimal string at `decimals` precision. */
-export function formatUnits(value: bigint, decimals = 7): string {
+export function formatUnits(value: bigint, decimals = 6): string {
   const base = 10n ** BigInt(decimals);
   const whole = value / base;
   const fractional = value % base;

@@ -56,7 +56,7 @@ export interface SettleOutcome {
 /**
  * One metered x402 session. On open it DISCOVERS the provider's terms from the
  * 402 (rate, settlement address, asset), accepts the provider's rate, funds the
- * escrow with the consumer's DEPOSITOR_SECRET, persists the channel to a MeterDb,
+ * escrow with the consumer's EVM_PRIVATE_KEY, persists the channel to a MeterDb,
  * serves many chat turns over the same channel, and at shutdown reads the channel
  * back from the DB and settles ONCE — paying the provider-advertised address.
  */
@@ -74,7 +74,7 @@ export class AgentSession {
   #tokenSymbol: string;
 
   constructor(private readonly config: ConsumerServerConfig) {
-    this.#tokenSymbol = process.env.SETTLEMENT_TOKEN_SYMBOL ?? "XLM";
+    this.#tokenSymbol = process.env.SETTLEMENT_TOKEN_SYMBOL ?? "USDC";
   }
 
   get ready(): boolean {
@@ -151,9 +151,8 @@ export class AgentSession {
     // if the provider didn't advertise one.
     const rate = parseUnits(advertised.rate ?? this.config.rate);
 
-    // 2) The consumer holds DEPOSITOR_SECRET and pays. The provider-advertised
-    //    address + asset become the settlement recipient + token bound into the
-    //    proof (overriding any consumer-side PROVIDER_PUBLIC / token env).
+    // 2) Consumer funds escrow (EVM_PRIVATE_KEY). Provider-advertised payTo +
+    //    asset bind into the proof.
     const real = realChainFromEnv();
     const chain: ChainClient = real?.chain ?? new MockChainClient();
 
@@ -276,7 +275,7 @@ export class AgentSession {
    * Close the live channel and settle it ONCE from durable MeterDb state:
    * build the Groth16 proof from the final voucher, submit it on-chain (proof
    * verification + `settlement ≤ escrow` + nullifier check + split transfer),
-   * and tear the channel down. The depositor (DEPOSITOR_SECRET) pays; funds go
+   * and tear the channel down. The depositor (EVM_PRIVATE_KEY) pays; funds go
    * to the provider-advertised address bound into the proof.
    *
    * On success (or when there is nothing to settle) the session is torn down and

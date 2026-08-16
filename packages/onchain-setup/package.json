@@ -16,12 +16,7 @@
   ],
   "scripts": {
     "build": "tsc -b",
-    "clean": "rm -rf dist *.tsbuildinfo",
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "dependencies": {
-    "@stellar/stellar-sdk": "^16.0.1",
-    "buffer": "^6.0.3"
+    "clean": "rm -rf dist *.tsbuildinfo"
   },
   "devDependencies": {
     "@types/node": "^26.0.1",

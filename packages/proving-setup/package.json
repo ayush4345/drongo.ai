@@ -17,7 +17,7 @@
   "scripts": {
     "build": "tsc -b",
     "clean": "rm -rf dist *.tsbuildinfo",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "tsc -b && node dist/serialize-evm.test.js"
   },
   "keywords": [],
   "author": "",

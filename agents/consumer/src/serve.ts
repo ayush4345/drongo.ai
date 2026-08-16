@@ -4,7 +4,7 @@
 //   pnpm --filter @drongo/web dev                # terminal 3 — chat UI on :3000
 //
 // Env: CONSUMER_PORT, PROVIDER_URL, CORS_ORIGIN, RATE, ESCROW,
-//      OPENAI_API_KEY (optional), X402_PAYMENT_SIGNATURE, DEPOSITOR_SECRET (optional).
+//      OPENAI_API_KEY (optional), X402_PAYMENT_SIGNATURE, EVM_PRIVATE_KEY.
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { config as loadEnv } from "dotenv";
