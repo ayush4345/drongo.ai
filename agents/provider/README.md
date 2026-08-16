@@ -36,7 +36,7 @@ tools an agent picks settles with a **single** ZK proof.
 
 The provider is the thing exposing the endpoint, so the x402 resource server
 lives here (`createProviderServer` / `serve.ts`). It speaks the
-[x402](https://x402.org) `exact` scheme over Stellar:
+[x402](https://x402.org) `exact` scheme over Base / USDC:
 
 ```
 POST /agent/open            → 402 Payment Required { accepts: [PaymentRequirements] }
@@ -65,9 +65,9 @@ without touching the transport):
 - `FacilitatorPaymentVerifier` (`MOCK_X402=false`) — POSTs the payload to an
   external x402 facilitator's `/verify` then `/settle` (Coinbase / OpenZeppelin).
 
-**Env:** `PORT` (4021), `X402_NETWORK` (`stellar:testnet`), `X402_ASSET`
-(SEP-41 token), `X402_PAY_TO`, `X402_MAX_AMOUNT`, `MOCK_X402` (`true`),
-`X402_FACILITATOR_URL`.
+**Env:** `PORT` (4021), `X402_NETWORK` (`base-sepolia`), `X402_ASSET`
+(ERC-20, default Base Sepolia USDC), `X402_PAY_TO`, `X402_MAX_AMOUNT`, `MOCK_X402` (`true`),
+`X402_FACILITATOR_URL` (default `https://x402.org/facilitator`).
 
 ## Exposed
 

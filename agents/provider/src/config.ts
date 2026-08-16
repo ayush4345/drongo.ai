@@ -2,9 +2,9 @@
 export interface ProviderServerConfig {
   port: number;
   network: string;
-  /** SEP-41 token contract accepted for payment (default: testnet USDC). */
+  /** ERC-20 token accepted for payment (default: Base Sepolia USDC). */
   asset: string;
-  /** Stellar account that receives settlement. */
+  /** Payout address advertised in the 402 (`0x…`). */
   payTo: string;
   /**
    * The provider's per-unit rate in the settlement token's DECIMAL units
@@ -27,12 +27,12 @@ export function readProviderServerConfig(env: NodeJS.ProcessEnv = process.env): 
     // and rely on this 4021 default; set CONSUMER_PORT for the consumer.
     // A bare PORT= in the shared file would make both servers bind the same port.
     port: Number(env.PORT ?? "4021"),
-    network: env.X402_NETWORK ?? "stellar:testnet",
-    asset: env.X402_ASSET ?? "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
-    payTo: env.X402_PAY_TO ?? "GDRONGO_PROVIDER_DEMO",
+    network: env.X402_NETWORK ?? "base-sepolia",
+    asset: env.X402_ASSET ?? "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    payTo: env.X402_PAY_TO ?? "0x0000000000000000000000000000000000000001",
     rate: env.RATE ?? "0.0001",
     maxAmount: env.X402_MAX_AMOUNT ?? "100000000",
     mockX402: (env.MOCK_X402 ?? "true") !== "false",
-    facilitatorUrl: env.X402_FACILITATOR_URL ?? "http://localhost:4023",
+    facilitatorUrl: env.X402_FACILITATOR_URL ?? "https://x402.org/facilitator",
   };
 }

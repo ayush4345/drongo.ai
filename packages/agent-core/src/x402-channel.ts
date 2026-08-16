@@ -21,7 +21,7 @@ export interface X402ChannelOptions {
   providerUrl: string;
   terms: ChannelTerms;
   fetchImpl?: FetchLike;
-  /** x402 payment authorization presented at open (mock by default). */
+  /** x402 payment signature presented at open (unsigned exact payload if omitted). */
   paymentSignature?: string;
   /** Units signed per call (defaults to 1). */
   unitsPerCall?: bigint;

@@ -1,30 +1,15 @@
 export {
-  SOROBAN_TESTNET,
-  assertSorobanConfig,
-  sorobanConfigFromEnv,
-  type SorobanConfig,
-} from "./config.js";
+  BASE_SEPOLIA,
+  BASE_USDC_ADDRESS,
+  BASE_SEPOLIA_USDC_ADDRESS,
+  assertBaseConfig,
+  baseConfigFromEnv,
+  type BaseConfig,
+} from "./base-config.js";
 
 export {
-  escrowGetBalance,
-  escrowGetRegistry,
-  escrowGetVerifier,
-  registryGetChannel,
-  registryHasChannel,
-  verifierVerify,
-  type ChannelEntry,
-  type VerifierProof,
-  type VerifierPublicSignals,
-} from "./contracts.js";
-
-export { SorobanSimulationError } from "./internal.js";
-
-export { Client as MeteredVerifierClient } from "./bindings/meteredverifier/src/index.js";
-export {
-  Client as SlateEscrowClient,
-  Errors as SlateEscrowErrors,
-} from "./bindings/slate-escrow/src/index.js";
-export {
-  Client as SlateAgentRegistryClient,
-  Errors as SlateAgentRegistryErrors,
-} from "./bindings/slate-agent-registry/src/index.js";
+  slateAgentRegistryAbi,
+  slateEscrowAbi,
+  settlementVerifierAbi,
+  erc20Abi,
+} from "./evm-abi.js";

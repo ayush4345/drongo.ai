@@ -15,5 +15,5 @@ export * from "./settle.js";
 // MeterDb uses node:sqlite (Node 22+). Import via "@drongo/agent-core/db" so
 // provider/consumer servers on Node 20 don't load it unless needed.
 export * from "./env.js";
-export * from "./soroban.js";
+export * from "./base.js";
 export type { ConsumerPublicKey, Voucher } from "@drongo/proving-setup";

@@ -9,8 +9,11 @@ export const PACKAGE_NAME = "proving-setup";
 // vouchers, address limbs, and the high-level `buildSettlementInputs`).
 export * from "./inputs.js";
 
-// Serialization bridge: snarkjs proof + public signals -> Soroban contract layout.
+// Serialization bridge: snarkjs proof + public signals -> packed byte layout.
 export * from "./serialize.js";
+
+// EVM / Base serialization + Option-A address padding helpers.
+export * from "./serialize-evm.js";
 
 /**
  * A field-element value accepted from callers. Normalised internally to a
@@ -60,7 +63,7 @@ export interface Groth16Proof {
 /**
  * Public signals in the order the circuit declares them in
  * `component main { public [...] }` — this matches the 13-element layout the
- * Soroban `meteredverifier` / `slate-escrow` contracts expect:
+ * `SettlementVerifier` / `SlateEscrow` expect:
  * `[channel_id, rate_commitment, escrow_amount, settlement_amount, nullifier,
  *   consumer_pubkey_x, consumer_pubkey_y, depositor_hi, depositor_lo,
  *   provider_hi, provider_lo, token_hi, token_lo]`.
@@ -109,7 +112,7 @@ type FieldBound = "field" | "uint64" | "uint128";
 
 // Declaration order here defines the witness input order. `uint64` fields feed
 // the in-circuit `LessEqThan(64)` range check; `uint128` fields are the address
-// limbs (high/low halves of a 32-byte Soroban payload).
+// limbs (high/low halves of a 32-byte left-padded address payload).
 const INPUT_SCHEMA: ReadonlyArray<{ name: keyof SettlementCircuitInputs; bound: FieldBound }> = [
   { name: "channel_id", bound: "field" },
   { name: "rate_commitment", bound: "field" },

@@ -39,7 +39,7 @@ export interface ChannelTerms {
   channelSecret: bigint;
   /** 32-byte Baby Jubjub voucher key (Uint8Array or 64-char hex). */
   consumerPrivateKey: AddressPayload;
-  /** 32-byte Soroban address payloads bound into the settlement proof. */
+  /** 32-byte left-padded address payloads bound into the settlement proof. */
   depositorPayload: AddressPayload;
   providerPayload: AddressPayload;
   tokenPayload: AddressPayload;
@@ -185,7 +185,7 @@ export class ProviderMeter {
  * Wires a {@link ConsumerMeter} and {@link ProviderMeter} over one channel and a
  * priced {@link Service}, exposing the full request -> pay -> serve round-trip
  * plus the settlement close. The close builds the 13-signal circuit input,
- * generates the Groth16 proof, and serializes it for the Soroban `settle` call.
+ * generates the Groth16 proof, and serializes it for `SlateEscrow.settle`.
  */
 export class ServiceChannel<Req, Res> implements MeteredServiceChannel<Req, Res> {
   readonly terms: ChannelTerms;

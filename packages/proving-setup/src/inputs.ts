@@ -79,7 +79,7 @@ function toFieldBigInt(label: string, value: FieldInput): bigint {
   return result;
 }
 
-/** A 32-byte Soroban address payload: a Uint8Array, or a 64-char hex string (optionally `0x`-prefixed). */
+/** A 32-byte address payload: a Uint8Array, or a 64-char hex string (optionally `0x`-prefixed). */
 export type AddressPayload = Uint8Array | string;
 
 /** The high/low 128-bit limbs of a 32-byte address payload. */
@@ -118,7 +118,7 @@ function bytesToBigIntBE(bytes: Uint8Array): bigint {
 }
 
 /**
- * Split a 32-byte Soroban address payload into its high/low 128-bit limbs,
+ * Split a 32-byte address payload into its high/low 128-bit limbs,
  * matching the contracts' `address_to_field_pair` (big-endian, `hi = bytes[0..16]`,
  * `lo = bytes[16..32]`).
  */

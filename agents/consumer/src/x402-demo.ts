@@ -7,6 +7,7 @@ import {
   X402ServiceChannel,
   MockChainClient,
   realChainFromEnv,
+  settlementBackendFromEnv,
   parseUnits,
   formatUnits,
 } from "@drongo/agent-core";
@@ -28,10 +29,10 @@ if (envLoad.error) {
   console.log(`env: no .env found at ${envPath} (${envLoad.error.message})`);
 } else {
   const keys = Object.keys(envLoad.parsed ?? {});
-  const hasSecret = keys.includes("DEPOSITOR_SECRET");
+  const hasEvm = keys.includes("EVM_PRIVATE_KEY");
   console.log(
     `env: loaded ${keys.length} var(s) from ${envPath}` +
-      (hasSecret ? "" : " — DEPOSITOR_SECRET NOT among them (check for an `export` prefix or typo)"),
+      (hasEvm ? " — Base (EVM_PRIVATE_KEY)" : " — no EVM_PRIVATE_KEY (mock mode)"),
   );
 }
 
@@ -46,16 +47,17 @@ async function main(): Promise<void> {
     process.argv.slice(2).join(" ") ||
     "What's the weather in Tokyo, the price of ETH in USD, and translate 'good morning' into Japanese?";
 
-  const symbol = process.env.SETTLEMENT_TOKEN_SYMBOL ?? "XLM";
-  const rate = parseUnits(process.env.RATE ?? "0.0001"); // PRIVATE per-call rate
-  const escrow = parseUnits(process.env.ESCROW ?? "0.01"); // public escrow ceiling
+  const backend = settlementBackendFromEnv();
+  const symbol = process.env.SETTLEMENT_TOKEN_SYMBOL ?? "USDC";
+  const rate = parseUnits(process.env.RATE ?? "0.0001");
+  const escrow = parseUnits(process.env.ESCROW ?? "0.01");
 
   const real = realChainFromEnv();
   if (!real) {
-    console.log("note: MOCK mode — DEPOSITOR_SECRET is not set in the environment.");
+    console.log("note: MOCK mode — set EVM_PRIVATE_KEY for on-chain Base settlement.");
   }
   const chain: ChainClient = real?.chain ?? new MockChainClient();
-  const mode = real ? "REAL Soroban (Stellar testnet)" : "mock (offline)";
+  const mode = backend === "base" ? "REAL Base (EVM)" : "mock (offline)";
 
   const depositorPayload = real?.depositorPayload ?? randomBytes(32);
   const providerPayload = real?.providerPayload ?? randomBytes(32);
@@ -144,8 +146,9 @@ async function main(): Promise<void> {
   );
   console.log(`  public signals:          ${settlement.serialized.publicSignals.length} (13-signal layout)`);
   console.log(`  settle tx:               ${settled.settleTx}`);
-  if (real) {
-    console.log(`\n  view on explorer: https://stellar.expert/explorer/testnet/tx/${settled.settleTx}`);
+  if (backend === "base") {
+    const chainId = process.env.BASE_CHAIN_ID ?? "84532";
+    console.log(`\n  view on explorer: https://sepolia.basescan.org/tx/${settled.settleTx} (chain ${chainId})`);
   }
 }
 

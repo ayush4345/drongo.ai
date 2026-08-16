@@ -23,12 +23,13 @@
   ],
   "scripts": {
     "build": "tsc -b",
-    "clean": "rm -rf dist *.tsbuildinfo"
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "test": "tsc -b && node --test dist/base.test.js dist/x402-client.test.js dist/db.test.js"
   },
   "dependencies": {
     "@drongo/onchain-setup": "workspace:*",
     "@drongo/proving-setup": "workspace:*",
-    "@stellar/stellar-sdk": "^16.0.1"
+    "viem": "^2.31.0"
   },
   "devDependencies": {
     "@types/node": "^26.0.1",

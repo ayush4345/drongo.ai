@@ -1,7 +1,7 @@
 # slate
 
 **Confidential, metered pay-per-use commerce between autonomous agents**, settled
-on Stellar/Soroban with a zero-knowledge proof.
+with a zero-knowledge proof on **Base (EVM)**.
 
 A **consumer agent** — driven by an LLM — is given a goal, picks tools, and
 **buys each call, per call**, from a **provider agent** over the network. It
@@ -14,6 +14,9 @@ ledger**. Only a Poseidon commitment to the rate is public.
 The result: agents can transact metered services (weather, prices, translation,
 inference, …) with the auditability of a public chain and the privacy of an
 off-chain meter.
+
+> Base port status: see [`docs/BASE_MIGRATION.md`](docs/BASE_MIGRATION.md).
+> Foundry contracts live under `packages/onchain-setup/evm/`.
 
 ---
 
@@ -34,7 +37,7 @@ off-chain meter.
         │      agent-core          │             ← Service / channel / ChainClient seams
         └──────┬────────────┬──────┘
                │            │
-       proving-setup   onchain-setup             ← ZK toolkit + Soroban contracts
+       proving-setup   onchain-setup             ← ZK toolkit + Base/EVM contracts
        (Circom+Groth16) (verifier/escrow/registry)
 ```
 
@@ -50,7 +53,7 @@ a real x402 facilitator by configuration alone.
 ```
 packages/
 ├── proving-setup/     @drongo/proving-setup   ZK toolkit: circuit, proofs, serialization
-├── onchain-setup/     @drongo/onchain-setup   Soroban contracts + TS client bindings
+├── onchain-setup/     @drongo/onchain-setup   Base/EVM contracts + viem ABIs
 └── agent-core/        @drongo/agent-core      shared runtime: services, channel, chain seam, MeterDb
 
 agents/
@@ -88,21 +91,20 @@ signature, `settlement = total_units · rate`, `settlement ≤ escrow`, and a
 nullifier for replay protection. See **[Settlement protocol reference](#settlement-protocol-reference)**
 below for the signal layout and end-to-end proving/settle flow.
 
-### `@drongo/onchain-setup` — the Soroban contracts
+### `@drongo/onchain-setup` — the Base / EVM contracts
 
-Three Rust contracts and their generated TypeScript client bindings.
+Three Solidity contracts in `packages/onchain-setup/evm/` (Foundry).
 
 | Contract | Role |
 |---|---|
-| `meteredverifier` | Stateless Groth16/BN254 pairing check against an embedded verifying key. No state, no funds. |
-| `slate-escrow` | Custodies deposits, cross-calls the verifier, enforces `settlement ≤ escrow` + nullifier replay protection, pays out. |
-| `slate-agent-registry` | Stores the fixed per-channel parameters (identities, rate commitment, pubkey) and open/closed lifecycle. |
+| `SettlementVerifier` | Groth16/BN254 pairing check against an embedded verifying key. |
+| `SlateEscrow` | Custodies ERC-20 deposits, verifies the proof, enforces `settlement ≤ escrow` + nullifier replay protection, pays out. |
+| `SlateAgentRegistry` | Stores the fixed per-channel parameters (identities, rate commitment, pubkey) and open/closed lifecycle. |
 
-The proving key and the verifier's embedded `vk.rs` come from the same ceremony,
-so a proof made locally verifies on-chain. `src/index.ts` re-exports the contract
-clients (`SlateEscrowClient`, `SlateAgentRegistryClient`, `MeteredVerifierClient`)
-that the runtime consumes. **See [`packages/onchain-setup/soroban/README.md`](packages/onchain-setup/soroban/README.md)**
-for the contracts, build, and deployment.
+The proving key and the verifier's embedded VK come from the same ceremony,
+so a proof made locally verifies on-chain. TypeScript clients use `viem` plus
+the ABIs in `src/evm-abi.ts`. **See [`packages/onchain-setup/evm/README.md`](packages/onchain-setup/evm/README.md)**
+for build and deployment.
 
 ### `@drongo/agent-core` — the shared runtime
 
@@ -115,8 +117,8 @@ it. Key modules:
 - **`channel.ts`** — `ConsumerMeter` / `ProviderMeter` / `ServiceChannel`:
   cumulative-voucher metering with typed reject reasons (`bad-signature`,
   `non-monotonic`, `ceiling-exceeded`, …).
-- **`chain.ts`** — the `ChainClient` seam. Open = `registry.register_channel` +
-  `escrow.add_to_depositors`; close = `escrow.settle`. Agents depend on this
+- **`chain.ts`** — the `ChainClient` seam. Open = `registry.registerChannel` +
+  `escrow.addToDepositors`; close = `escrow.settle`. Agents depend on this
   interface, so the whole loop is **testable without a deployed contract**.
 - **`x402-client.ts` / `x402-channel.ts`** — the same metering loop carried over
   HTTP with the x402 `402 → X-PAYMENT → open` handshake, so a channel behaves
@@ -145,8 +147,9 @@ The LLM-driven consumer. A `ServiceAgent` drives an `AgentBrain` —
 function-calling when `OPENAI_API_KEY` is set) — that picks tools, buys each call,
 feeds results back to the LLM, and at close **settles once** with a Groth16 proof.
 It **discovers** the provider's advertised terms from the `402`, holds
-`DEPOSITOR_SECRET` (so the consumer funds escrow and pays for everything), and
-runs a chat server (`:4022`). **See [`agents/consumer/README.md`](agents/consumer/README.md).**
+`EVM_PRIVATE_KEY` so the consumer funds escrow and pays for everything, and
+runs a chat server (`:4022`).
+**See [`agents/consumer/README.md`](agents/consumer/README.md).**
 
 ### `@drongo/web` — the front end
 
@@ -174,11 +177,11 @@ pnpm --filter @drongo/web dev
 
 Open <http://localhost:3000/dashboard> and chat. Set `OPENAI_API_KEY` for real
 LLM tool selection; otherwise the deterministic stub brain runs offline. Copy
-[`.env.example`](.env.example) → `.env`: **without `DEPOSITOR_SECRET` the demo
-runs in offline mock mode** (no chain calls); set it (plus the deployed contract
-IDs) to settle for real on Stellar testnet. On shutdown the consumer reads the
-channel from `MeterDb` and settles it with one ZK proof, paying the
-provider-advertised address.
+[`.env.example`](.env.example) → `.env`: **without `EVM_PRIVATE_KEY` the demo
+runs in offline mock mode** (no chain calls). Set `EVM_PRIVATE_KEY` plus the
+deployed `BASE_*_ADDRESS` values to settle on Base Sepolia. On shutdown the
+consumer reads the channel from `MeterDb` and settles it with one ZK proof,
+paying the provider-advertised address.
 
 To run the agent loop without the web UI (in-process or over x402), see the
 provider and consumer READMEs.
@@ -207,7 +210,7 @@ used by every contract and by the serializer.
 | 9–10 | `provider_hi/lo` | < 2¹²⁸ | escrow + registry |
 | 11–12 | `token_hi/lo` | < 2¹²⁸ | escrow + registry |
 
-Soroban addresses are 32-byte payloads split into two 128-bit limbs
+EVM addresses are left-padded to 32 bytes, then split into two 128-bit limbs
 (`hi = bytes[0..16]`, `lo = bytes[16..32]`, big-endian) so they fit the BN254
 scalar field.
 
@@ -217,25 +220,22 @@ scalar field.
 # build-time (proving-setup)
 circom settlement.circom   → settlement.r1cs, settlement_js/settlement.wasm
 groth16 setup + ceremony   → settlement_final.zkey, settlement_verification_key.json
-gen_verifier_data.js       → meteredverifier/src/vk.rs (+ test fixtures)
+snarkjs zkey export solidityverifier   → SettlementVerifier.sol
 
-# deploy (onchain-setup)
-deploy meteredverifier                 → verifierAddr
-deploy slate-escrow ; escrow.init(verifierAddr)
-escrow.whitelist_token(tokenAddr)
-deploy slate-agent-registry            → registryAddr
+# deploy (onchain-setup/evm)
+forge script script/Deploy.s.sol:DeployScript --broadcast
 ```
 
-The proving key and the verifier's embedded `vk.rs` come from the same ceremony,
-so a proof made from `settlement_final.zkey` verifies under `meteredverifier`.
+The proving key and the verifier's embedded VK come from the same ceremony,
+so a proof made from `settlement_final.zkey` verifies on-chain.
 
 ### Phase 1 — Open & fund a channel (depositor)
 
 ```
-registry.register_channel(channel_id, rate_commitment,
-                          consumer_pubkey_x, consumer_pubkey_y,
-                          depositor, provider, token)   // depositor.require_auth()
-escrow.add_to_depositors(depositor, amount, token)      // pulls tokens into escrow
+registry.registerChannel(channelId, rateCommitment,
+                         consumerPubkeyX, consumerPubkeyY,
+                         depositor, provider, token)
+escrow.addToDepositors(depositor, amount, token)      // pulls ERC-20 into escrow
 ```
 
 `rate_commitment` must equal `Poseidon(rate, rate_blind)` — computable client-side
@@ -300,14 +300,14 @@ verifying key was produced with.
 ### Phase 6 — Submit settlement
 
 ```
-escrow.settle(Proof{a,b,c}, public_signals[13], depositor, provider, token)
+escrow.settle(a, b, c, publicSignals[13], depositor, provider, token)
 ```
 
-Inside `slate-escrow.settle`, in order:
+Inside `SlateEscrow.settle`, in order:
 
-1. `public_signals.len() == 13`.
+1. `publicSignals.length == 13`.
 2. Assert call-arg `depositor` / `provider` / `token` equal signals 7–12.
-3. Cross-call `meteredverifier.verify(proof, public_signals)`
+3. Call `SettlementVerifier.verifyProof(a, b, c, publicSignals)`
    — reconstruct `vk_x = IC[0] + Σ signals[i]·IC[i+1]`, then
    `pairing_check(e(−A,B)·e(α,β)·e(vk_x,γ)·e(C,δ)) == 1`.
 4. Extract `escrow_amount` (2), `settlement_amount` (3), `nullifier` (4);
@@ -320,7 +320,7 @@ Inside `slate-escrow.settle`, in order:
 
 ```
 escrow.refund(depositor, token)             // withdraw remaining balance
-registry.close_channel(channel_id, caller)  // depositor or provider
+registry.closeChannel(channelId)            // depositor or provider
 ```
 
 ### Call graph
@@ -337,7 +337,7 @@ prover:    buildSettlementInputs ◄────────────┘
            serializeSettlement ──────► { a/b/c bytes, bigint[13] }
                 │
 submitter:      ▼
-           escrow.settle ──► assert addresses ──► meteredverifier.verify ──► pay out
+           escrow.settle ──► assert addresses ──► SettlementVerifier.verifyProof ──► pay out
 ```
 
 ---
@@ -350,13 +350,13 @@ The workspace builds with TypeScript project references:
 pnpm install
 pnpm -r build                                   # or: pnpm --filter <pkg> build
 
-# Soroban contracts
-cd packages/onchain-setup/soroban && cargo test
+# EVM contracts
+cd packages/onchain-setup/evm && forge test
 ```
 
 Per-layer usage, env vars, and demos live in each package's README:
 [proving-setup](#drongoproving-setup--the-cryptographic-core) ·
-[onchain-setup](packages/onchain-setup/soroban/README.md) ·
+[onchain-setup](packages/onchain-setup/evm/README.md) ·
 [agent-provider](agents/provider/README.md) ·
 [agent-consumer](agents/consumer/README.md) ·
 [web](web/README.md).

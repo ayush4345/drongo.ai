@@ -1,6 +1,6 @@
 import express from "express";
 import type { Express } from "express";
-import { realChainFromEnv } from "@drongo/agent-core";
+import { realChainFromEnv, settlementBackendFromEnv } from "@drongo/agent-core";
 import type { AgentSession } from "./session.js";
 import type { ConsumerServerConfig } from "./config.js";
 import { buildAgentSteps } from "./steps.js";
@@ -40,6 +40,7 @@ export function createConsumerServer(deps: ConsumerServerDeps): Express {
 
   app.get("/health", (_req, res) => {
     const real = realChainFromEnv();
+    const backend = settlementBackendFromEnv();
     res.json({
       ok: session.ready,
       provider: providerInfo(config),
@@ -52,10 +53,10 @@ export function createConsumerServer(deps: ConsumerServerDeps): Express {
         label: meta.label,
       })),
       brain: process.env.OPENAI_API_KEY ? "openai" : "stub",
-      settlementMode: real ? "stellar" : "mock",
+      settlementMode: backend ?? "mock",
       settlementNote: real
-        ? "Calls are metered off-chain; one ZK proof settles on-chain when the consumer stops."
-        : "Mock mode — calls are metered but no real on-chain payment without DEPOSITOR_SECRET.",
+        ? "Calls are metered off-chain; one ZK proof settles on Base when the consumer stops."
+        : "Mock mode — set EVM_PRIVATE_KEY for on-chain Base settlement.",
       payment: session.getPaymentSummary(),
     });
   });

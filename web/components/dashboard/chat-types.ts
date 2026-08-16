@@ -181,7 +181,7 @@ export function sumChatPayments(turns: AgentTurn[]): TurnPayment | null {
   const byProvider = new Map<string, ProviderSettlement>();
   let totalCalls = 0;
   let totalBillable = BigInt(0);
-  let tokenSymbol = "XLM";
+  let tokenSymbol = "USDC";
 
   for (const turn of completed) {
     const payment = turn.payment!;
